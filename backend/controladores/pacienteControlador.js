@@ -1,44 +1,52 @@
-const banco = require('../banco/conexao');
+const pool = require('../banco/conexao');
 
-// 1. Função para cadastrar um novo paciente (Já estava aqui)
-const cadastrarPaciente = async (requisicao, resposta) => {
+const listarPacientes = async (req, res) => {
     try {
-        const { nome, idade, patologia } = requisicao.body;
-
-        if (!nome) {
-            return resposta.status(400).json({ erro: "O nome do paciente é obrigatório." });
-        }
-
-        const comandoSql = 'INSERT INTO pacientes (nome, idade, patologia) VALUES ($1, $2, $3) RETURNING *';
-        const valores = [nome, idade, patologia];
-        
-        const resultado = await banco.query(comandoSql, valores);
-        
-        return resposta.status(201).json(resultado.rows[0]); 
+        const resultado = await pool.query(`
+            SELECT p.*, prof.nome AS nome_profissional 
+            FROM pacientes p
+            LEFT JOIN profissionais prof ON p.profissional_id = prof.id
+            ORDER BY p.nome_paciente
+        `);
+        res.status(200).json(resultado.rows);
     } catch (erro) {
-        console.error('Erro ao cadastrar paciente:', erro);
-        return resposta.status(500).json({ erro: "Erro ao cadastrar o paciente." });
+        console.error(erro);
+        res.status(500).json({ erro: 'Erro ao buscar pacientes.' });
     }
 };
 
-// 2. NOVA FUNÇÃO: Listar todos os pacientes
-const listarPacientes = async (requisicao, resposta) => {
-    try {
-        // O mesmo comando que você testou no pgAdmin
-        const comandoSql = 'SELECT * FROM pacientes'; 
-        const resultado = await banco.query(comandoSql);
+const criarPaciente = async (req, res) => {
+    const { 
+        profissional_id, nome_paciente, data_nascimento_paciente, 
+        diagnostico_condicao, nome_familiar, grau_parentesco, 
+        telefone_familiar, email_familiar 
+    } = req.body;
 
-        // 200 é o código HTTP de sucesso padrão (OK)
-        // resultado.rows contém os registros (linhas) que vieram do banco
-        return resposta.status(200).json(resultado.rows);
+    try {
+        const query = `
+            INSERT INTO pacientes (
+                profissional_id, nome_paciente, data_nascimento_paciente, 
+                diagnostico_condicao, nome_familiar, grau_parentesco, 
+                telefone_familiar, email_familiar
+            ) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+            RETURNING *;
+        `;
+        const valores = [
+            profissional_id, nome_paciente, data_nascimento_paciente, 
+            diagnostico_condicao, nome_familiar, grau_parentesco, 
+            telefone_familiar, email_familiar
+        ];
+        
+        const resultado = await pool.query(query, valores);
+        res.status(201).json(resultado.rows[0]);
     } catch (erro) {
-        console.error('Erro ao listar pacientes:', erro);
-        return resposta.status(500).json({ erro: "Erro ao buscar a lista de pacientes." });
+        console.error(erro);
+        res.status(500).json({ erro: 'Erro ao cadastrar paciente.' });
     }
 };
 
-// Exportando as DUAS funções agora
 module.exports = {
-    cadastrarPaciente,
-    listarPacientes
+    listarPacientes,
+    criarPaciente
 };

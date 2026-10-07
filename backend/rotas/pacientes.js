@@ -2,19 +2,17 @@ const express = require('express');
 const roteador = express.Router();
 
 const pacienteControlador = require('../controladores/pacienteControlador');
-const exercicioControlador = require('../controladores/exercicioControlador');
-const medicamentoControlador = require('../controladores/medicamentoControlador');
+// Importamos o novo controlador que criamos no passo anterior
+const cuidadosControlador = require('../controladores/cuidadosControlador');
 
 // Rotas Base de Pacientes
-roteador.post('/', pacienteControlador.cadastrarPaciente);
+roteador.post('/', pacienteControlador.criarPaciente);
 roteador.get('/', pacienteControlador.listarPacientes);
 
-// Rotas de Exercícios do Paciente
-roteador.post('/:id/exercicios', exercicioControlador.vincularExercicio);
-roteador.get('/:id/exercicios', exercicioControlador.listarExerciciosPaciente);
+// Rotas do Diário de Cuidados do Paciente (Substitui exercícios e medicamentos)
+roteador.post('/:id/cuidados', cuidadosControlador.adicionarTarefaDiario);
 
-// Rotas de Medicamentos do Paciente
-roteador.post('/:id/medicamentos', medicamentoControlador.vincularMedicamento);
-roteador.get('/:id/medicamentos', medicamentoControlador.listarMedicamentosPaciente);
+
+// roteador.get('/:id/cuidados', cuidadosControlador.listarTarefasDiario);
 
 module.exports = roteador;
