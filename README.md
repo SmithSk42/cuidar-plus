@@ -28,6 +28,11 @@ senha com bcrypt e retorna JWT; cada portal aceita apenas seu próprio perfil.
 O painel de fisioterapia após o login ainda exibe dados demonstrativos e suas
 funções de cadastro/listagem/tarefas ainda não persistem no MySQL.
 
+O código está organizado em módulos de configuração, banco, middleware,
+serviços e rotas dentro de `backend/src/`. O guia de apresentação com roteiro,
+mapa dos arquivos e falas sugeridas está em
+[`docs/GUIA_APRESENTACAO_AUTENTICACAO.md`](./docs/GUIA_APRESENTACAO_AUTENTICACAO.md).
+
 ### Configuração local
 
 1. Instale e inicie o MySQL Server 8.0.16+ e crie as tabelas executando
@@ -72,7 +77,8 @@ funções de cadastro/listagem/tarefas ainda não persistem no MySQL.
 5. Para criar uma conta de fisioterapeuta pela tela, acesse
    `http://localhost:5173/fisioterapeuta`, selecione **Cadastrar-se** e informe
    nome, CREFITO, e-mail e senha. O cadastro grava a senha como hash bcrypt.
-   Como alternativa administrativa/local, ainda está disponível o comando:
+   Como alternativa administrativa/local, ainda está disponível o comando
+   `npm run create:fisioterapeuta`, que usa o mesmo serviço de cadastro da API:
 
    ```sh
    cd backend
@@ -138,9 +144,8 @@ Keystore); a interface web/PWA atual mantém a sessão em `sessionStorage`.
 
 1. **Ponto de partida:** login e check-in eram mocks — token fixo e resposta
    simulada, sem persistência ou validação de identidade.
-2. **Autenticação:** o portal do paciente permite cadastro com hash bcrypt; o
-   fisioterapeuta é criado por uma ferramenta local autorizada. O login para
-   ambos valida credenciais e emite JWT assinado, expirável, com ID e perfil.
+2. **Autenticação:** os dois portais permitem criar contas com hash bcrypt. O
+   login valida as credenciais e emite JWT assinado, expirável, com ID e perfil.
 3. **Autorização e integridade:** o check-in exige token de paciente e usa o ID
    contido nele; o cliente não pode escolher outro `paciente_id`.
 4. **Persistência e app:** formulário responsivo envia atividades, nível de dor
