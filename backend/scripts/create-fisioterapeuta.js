@@ -1,4 +1,3 @@
-// Responsável por esta implementação: Filipe Alves Sousa Julio.
 require('dotenv').config();
 
 const { StringDecoder } = require('node:string_decoder');

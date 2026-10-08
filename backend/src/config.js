@@ -1,4 +1,3 @@
-// Responsável por esta implementação: Filipe Alves Sousa Julio.
 function getJwtSecret() {
   const secret = process.env.JWT_SECRET;
   if (!secret || secret.startsWith('SUBSTITUA_') || Buffer.byteLength(secret) < 32) {

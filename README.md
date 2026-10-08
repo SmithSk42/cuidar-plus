@@ -2,8 +2,6 @@
 
 Projeto de extensão desenvolvido pelos alunos do Bacharelado em Sistemas de Informação (BSI) do Instituto Federal da Bahia (IFBA) para a disciplina de ACEX II.
 
-> **Responsável pelas alterações de código, configuração e documentação desta integração:** Filipe Alves Sousa Julio.
-
 O **Cuidar+** é uma solução digital criada para aproximar a rede de apoio (familiares e cuidadores) do fisioterapeuta responsável, centralizando informações, organizando rotinas de reabilitação e facilitando o acompanhamento da evolução funcional do paciente fora do ambiente clínico.
 
 ## 🛠️ Stack Tecnológica e Arquitetura

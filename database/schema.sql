@@ -1,4 +1,3 @@
--- Responsável por esta implementação: Filipe Alves Sousa Julio.
 -- Esquema para MySQL 8.0.16+ (CHECK constraints ativos) / InnoDB.
 CREATE DATABASE IF NOT EXISTS cuidar_plus
     CHARACTER SET utf8mb4

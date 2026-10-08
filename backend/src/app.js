@@ -1,4 +1,3 @@
-// Responsável por esta implementação: Filipe Alves Sousa Julio.
 const cors = require('cors');
 const express = require('express');
 const { pool } = require('./db');
