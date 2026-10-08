@@ -1,9 +1,12 @@
+// Responsável por esta implementação: Filipe Alves Sousa Julio.
 import React from "react";
 import { createRoot } from "react-dom/client";
-import PainelFisio from "./PainelFisio.jsx";
+import TelaLoginPaciente from "./telalogin.jsx";
+
+const isPatientPortal = /^\/paciente(?:\/|$)/.test(window.location.pathname);
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <PainelFisio />
+    <TelaLoginPaciente perfilEsperado={isPatientPortal ? 'paciente' : 'fisioterapeuta'} />
   </React.StrictMode>
 );
