@@ -1,4 +1,3 @@
-// Responsável por esta implementação: Filipe Alves Sousa Julio.
 import React from "react";
 import { createRoot } from "react-dom/client";
 import PortalAutenticacao from "./PortalAutenticacao.jsx";

@@ -1,4 +1,3 @@
-// Responsável por esta implementação: Filipe Alves Sousa Julio.
 const jwt = require('jsonwebtoken');
 const { getJwtSecret } = require('../config');
 

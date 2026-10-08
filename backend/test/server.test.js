@@ -1,4 +1,3 @@
-// Responsável por esta implementação: Filipe Alves Sousa Julio.
 const assert = require('node:assert/strict');
 const { after, before, test } = require('node:test');
 const bcrypt = require('bcryptjs');

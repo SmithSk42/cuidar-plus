@@ -1,4 +1,3 @@
-// Responsável por esta implementação: Filipe Alves Sousa Julio.
 const express = require('express');
 const { autenticar } = require('../middleware/authenticate');
 const { pool } = require('../db');

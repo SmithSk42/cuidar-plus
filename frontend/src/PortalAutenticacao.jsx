@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import PainelFisio from './PainelFisio.jsx';
-// Responsável por esta implementação: Filipe Alves Sousa Julio.
 import './paciente.css';
 import { apiRequest } from './services/api.js';
 const SESSION_KEYS = {

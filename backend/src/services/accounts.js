@@ -1,4 +1,3 @@
-// Responsável por esta implementação: Filipe Alves Sousa Julio.
 const bcrypt = require('bcryptjs');
 const { createHash } = require('node:crypto');
 const { pool } = require('../db');
