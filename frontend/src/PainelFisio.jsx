@@ -441,7 +441,7 @@ export default function PainelFisio() {
     <div className="pf">
       <style>{css}</style>
       <aside className="pf-side">
-        <p className="pf-brand">Painel da Fisio</p>
+        <p className="pf-brand">Painel da Fisioterapeuta</p>
         <button className="pf-nav" aria-current={tela === "dashboard" ? "page" : undefined} onClick={() => setTela("dashboard")}>Pacientes</button>
         <button className="pf-nav" aria-current={tela === "novo" ? "page" : undefined} onClick={() => setTela("novo")}>Novo paciente</button>
       </aside>
