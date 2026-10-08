@@ -138,28 +138,6 @@ de senha, limitação de tentativas de login e HTTPS. No app
 mobile nativo, armazene o token no armazenamento seguro do sistema (Keychain /
 Keystore); a interface web/PWA atual mantém a sessão em `sessionStorage`.
 
-### Como apresentar a implementação
-
-1. **Ponto de partida:** login e check-in eram mocks — token fixo e resposta
-   simulada, sem persistência ou validação de identidade.
-2. **Autenticação:** os dois portais permitem criar contas com hash bcrypt. O
-   login valida as credenciais e emite JWT assinado, expirável, com ID e perfil.
-3. **Autorização e integridade:** o check-in exige token de paciente e usa o ID
-   contido nele; o cliente não pode escolher outro `paciente_id`.
-4. **Persistência e app:** formulário responsivo envia atividades, nível de dor
-   e observações para a API; histórico mostra os registros lidos do MySQL.
-5. **Demonstração:** abra `/paciente`, crie uma conta, entre, registre um
-   check-in e confira-o no histórico; depois crie a conta de fisioterapeuta em
-   `/fisioterapeuta` e demonstre o login. Explique que as
-   funções internas do painel do fisioterapeuta ainda usam dados demonstrativos.
-
-### Migração do PostgreSQL
-
-A API e o esquema atuais usam MySQL. A troca do driver e do esquema não transfere
-automaticamente dados que eventualmente existam em um PostgreSQL anterior. Faça
-backup e exportação/importação dos dados separadamente, mapeando tipos, IDs,
-datas e chaves estrangeiras antes de apontar a aplicação para a nova base.
-
 ## 👥 Equipe de Desenvolvimento (Grupo A)
 * **Gestor do Processo:** Osmir Santos Meira
 * **Desenvolvedores:**
@@ -170,4 +148,4 @@ datas e chaves estrangeiras antes de apontar a aplicação para a nova base.
   * Luis Felipe da Silva
 
 ---
-*Projeto em desenvolvimento - Etapa 1 ativa.*
+*Projeto em desenvolvimento - Etapas 2 e 3*
