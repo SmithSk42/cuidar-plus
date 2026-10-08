@@ -1,42 +1,12 @@
-// Responsável por esta implementação: Filipe Alves Sousa Julio.
 import { useEffect, useState } from 'react';
 import PainelFisio from './PainelFisio.jsx';
+// Responsável por esta implementação: Filipe Alves Sousa Julio.
 import './paciente.css';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+import { apiRequest } from './services/api.js';
 const SESSION_KEYS = {
   paciente: 'cuidar-paciente-session',
   fisioterapeuta: 'cuidar-fisioterapeuta-session',
 };
-
-async function apiRequest(path, options = {}) {
-  const { token, ...fetchOptions } = options;
-  let response;
-  try {
-    response = await fetch(`${API_URL}${path}`, {
-      ...fetchOptions,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...fetchOptions.headers,
-      },
-      body: fetchOptions.body === undefined ? undefined : JSON.stringify(fetchOptions.body),
-    });
-  } catch {
-    throw new Error('Não foi possível conectar à API. Confira se o backend está iniciado.');
-  }
-
-  let data;
-  try {
-    data = await response.json();
-  } catch {
-    throw new Error('A API respondeu em um formato inesperado.');
-  }
-  if (!response.ok) {
-    throw new Error(data.erro || 'Não foi possível concluir a solicitação.');
-  }
-  return data;
-}
 
 function readSession(perfilEsperado) {
   const sessionKey = SESSION_KEYS[perfilEsperado];
@@ -68,7 +38,7 @@ function Field({ id, label, type = 'text', value, onChange, autoComplete, requir
   );
 }
 
-export default function TelaLoginPaciente({ perfilEsperado = 'paciente' }) {
+export default function PortalAutenticacao({ perfilEsperado = 'paciente' }) {
   const isPatient = perfilEsperado === 'paciente';
   const sessionKey = SESSION_KEYS[perfilEsperado];
   const [session, setSession] = useState(() => readSession(perfilEsperado));
