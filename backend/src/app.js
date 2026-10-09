@@ -3,6 +3,8 @@ const express = require('express');
 const { pool } = require('./db');
 const { router: authRoutes } = require('./routes/auth');
 const { router: checkinRoutes } = require('./routes/checkins');
+// 1. A sua importação sobe para o topo com as restantes
+const { router: pacienteRouter } = require('./routes/paciente'); 
 
 const app = express();
 const allowedOrigins = new Set(
@@ -29,10 +31,13 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
+// 2. A sua rota junta-se ao bloco de rotas da equipa (com o prefixo /api)
 app.use('/api', authRoutes);
 app.use('/api/checkin', checkinRoutes);
 app.use('/api/checkins', checkinRoutes);
+app.use('/api/pacientes', pacienteRouter); 
 
+// 3. A rede de segurança (tratador de erros) fica no fim, protegendo todas as rotas acima
 app.use((error, req, res, next) => {
   if (res.headersSent) return next(error);
   console.error('Erro não tratado na API:', error);

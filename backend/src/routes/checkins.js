@@ -1,6 +1,7 @@
 const express = require('express');
 const { autenticar } = require('../middleware/authenticate');
-const { pool } = require('../db');
+// Importa o SEU motor
+const checkinsService = require('../services/checkins'); 
 
 const router = express.Router();
 
@@ -24,20 +25,14 @@ router.post('/', autenticar, async (req, res) => {
   }
 
   try {
-    const [insertResult] = await pool.execute(
-      `INSERT INTO checkins (paciente_id, status_atividades, nivel_dor, observacoes)
-       VALUES (?, ?, ?, ?)`,
-      [req.usuario.id, statusAtividades, nivelDor, observacoes]
-    );
-    const [checkins] = await pool.execute(
-      `SELECT id, paciente_id, data_registro, status_atividades, nivel_dor, observacoes
-       FROM checkins WHERE id = ?`,
-      [insertResult.insertId]
-    );
-    if (!checkins.length) {
-      throw new Error('O check-in foi inserido, mas não foi possível recuperá-lo.');
-    }
-    return res.status(201).json({ mensagem: 'Check-in registrado.', checkin: checkins[0] });
+    // Aciona o seu motor passando os dados limpos
+    const novoCheckin = await checkinsService.registrarCheckin(req.usuario.id, {
+        statusAtividades,
+        nivelDor,
+        observacoes
+    });
+    
+    return res.status(201).json({ mensagem: 'Check-in registrado.', checkin: novoCheckin });
   } catch (error) {
     console.error('Erro ao salvar check-in:', error);
     return res.status(500).json({ erro: 'Não foi possível salvar o check-in.' });
@@ -50,13 +45,8 @@ router.get('/meus', autenticar, async (req, res) => {
   }
 
   try {
-    const [checkins] = await pool.execute(
-      `SELECT id, paciente_id, data_registro, status_atividades, nivel_dor, observacoes
-       FROM checkins WHERE paciente_id = ?
-       ORDER BY data_registro DESC, id DESC
-       LIMIT 30`,
-      [req.usuario.id]
-    );
+    // Aciona o seu motor para listar
+    const checkins = await checkinsService.listarMeusCheckins(req.usuario.id);
     return res.json({ checkins });
   } catch (error) {
     console.error('Erro ao consultar check-ins:', error);
