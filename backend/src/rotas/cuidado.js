@@ -77,6 +77,7 @@ rotasCuidado.get('/meu-dia',exigirAcessoDomiciliar,async(req,res,next)=>{
       JOIN pacientes p ON p.id=v.paciente_id AND p.status='Ativo'
       JOIN rotinas r ON r.paciente_id=p.id AND r.status='Ativa'
         AND r.data_inicio<=CURDATE() AND (r.data_fim IS NULL OR r.data_fim>=CURDATE())
+      AND (r.dias_semana IS NULL OR FIND_IN_SET(ELT(WEEKDAY(CURDATE())+1,'Seg','Ter','Qua','Qui','Sex','Sab','Dom'),r.dias_semana)>0)
       LEFT JOIN checkins c ON c.paciente_id=p.id AND c.rotina_id=r.id AND c.data_registro=CURDATE()
       WHERE v.usuario_id=? AND v.status='Ativo' ORDER BY p.nome,r.titulo`,[req.usuarioDomiciliar.id]);
     if(!rotinas.length)return res.json({rotinas:[],data:new Date().toISOString().slice(0,10)});
@@ -84,9 +85,21 @@ rotasCuidado.get('/meu-dia',exigirAcessoDomiciliar,async(req,res,next)=>{
     const [itens]=await banco.query(`SELECT ri.id AS rotina_item_id,ri.rotina_id,e.nome,e.descricao,
       ri.series,ri.repeticoes,ri.observacoes
       FROM rotinas_itens ri JOIN exercicios e ON e.id=ri.exercicio_id
-      WHERE ri.rotina_id IN (${ids.map(()=>'?').join(',')}) ORDER BY ri.id`,ids);
-    const mapa=new Map();for(const rotina of rotinas)mapa.set(rotina.rotina_id,{...rotina,itens:[]});
+      WHERE ri.rotina_id IN (${ids.map(()=>'?').join(',')}) AND (ri.dias_semana IS NULL OR FIND_IN_SET(ELT(WEEKDAY(CURDATE())+1,'Seg','Ter','Qua','Qui','Sex','Sab','Dom'),ri.dias_semana)>0) ORDER BY ri.id`,ids);
+    const mapa=new Map();for(const rotina of rotinas)mapa.set(rotina.rotina_id,{...rotina,itens:[],medicamentos:[]});
     for(const item of itens)mapa.get(item.rotina_id)?.itens.push(item);
+    const [remedios]=await banco.query(`SELECT rm.rotina_id, hm.id AS horario_id, hm.horario, mp.id AS medicamento_paciente_id,
+      m.nome, m.apresentacao, mp.dose_informada,mp.via_administracao,mp.orientacao_prescrita,
+      reg.situacao AS registro_situacao FROM rotinas_medicamentos rm
+      JOIN medicamentos_pacientes mp ON mp.id=rm.medicamento_paciente_id AND mp.status='Ativo'
+        AND mp.data_inicio<=CURDATE() AND (mp.data_fim IS NULL OR mp.data_fim>=CURDATE())
+      JOIN medicamentos m ON m.id=mp.medicamento_id
+      JOIN horarios_medicamentos hm ON hm.medicamento_paciente_id=mp.id AND hm.ativo=TRUE
+      LEFT JOIN registros_medicamentos reg ON reg.horario_id=hm.id AND reg.data_programada=CURDATE()
+      WHERE rm.rotina_id IN (${ids.map(()=>'?').join(',')})
+      AND (hm.dias_semana IS NULL OR FIND_IN_SET(ELT(WEEKDAY(CURDATE())+1,'Seg','Ter','Qua','Qui','Sex','Sab','Dom'),hm.dias_semana)>0)
+      ORDER BY hm.horario`,ids);
+    for(const med of remedios)mapa.get(med.rotina_id)?.medicamentos.push(med);
     res.json({rotinas:[...mapa.values()],data:new Date().toISOString().slice(0,10)});
   }catch(e){next(e);}
 });
@@ -113,7 +126,7 @@ rotasCuidado.post('/checkins',exigirAcessoDomiciliar,async(req,res,next)=>{
     if(!p.length||p[0].status!=='Ativo'){
       await conn.rollback();return res.status(403).json({erro:'Rotina não disponível para seu acompanhamento.'});
     }
-    const [itens]=await conn.execute('SELECT id FROM rotinas_itens WHERE rotina_id=? ORDER BY id FOR UPDATE',[rotinaId]);
+    const [itens]=await conn.execute("SELECT id FROM rotinas_itens WHERE rotina_id=? AND (dias_semana IS NULL OR FIND_IN_SET(ELT(WEEKDAY(CURDATE())+1,'Seg','Ter','Qua','Qui','Sex','Sab','Dom'),dias_semana)>0) ORDER BY id FOR UPDATE",[rotinaId]);
     if(itens.length!==marcados.size||itens.some(item=>!marcados.has(item.id))){
       await conn.rollback();return requisicaoInvalida(res,'Confirme todos os exercícios desta rotina.');
     }
@@ -130,5 +143,29 @@ rotasCuidado.post('/checkins',exigirAcessoDomiciliar,async(req,res,next)=>{
     await conn.commit();res.status(201).json({id:gravado.insertId,mensagem:'Check-in registrado. Seu fisioterapeuta poderá consultá-lo.'});
   }catch(e){if(conn)await conn.rollback();if(e.code==='ER_DUP_ENTRY')return res.status(409).json({erro:'Esta rotina já foi registrada hoje.'});next(e);}
   finally{conn?.release();}
+});
+rotasCuidado.post('/medicamentos/registrar',exigirAcessoDomiciliar,async(req,res,next)=>{
+  const horarioId=idPositivo(req.body?.horario_id),situacao=req.body?.situacao;
+  if(!horarioId||!['Administrado','Nao_Administrado','Adiado'].includes(situacao))return requisicaoInvalida(res,'Informe um horário e uma situação válida.');
+  let conexao;
+  try{
+    conexao=await banco.getConnection();await conexao.beginTransaction();
+    const [registros]=await conexao.execute(`SELECT hm.id AS horario_id,mp.id AS medicamento_paciente_id,mp.paciente_id
+    FROM horarios_medicamentos hm JOIN medicamentos_pacientes mp ON mp.id=hm.medicamento_paciente_id
+    JOIN vinculos_cuidado v ON v.paciente_id=mp.paciente_id AND v.usuario_id=? AND v.status='Ativo' AND v.pode_registrar=TRUE
+    JOIN rotinas_medicamentos rm ON rm.medicamento_paciente_id=mp.id
+    JOIN rotinas r ON r.id=rm.rotina_id AND r.status='Ativa' AND r.data_inicio<=CURDATE() AND (r.data_fim IS NULL OR r.data_fim>=CURDATE())
+    WHERE hm.id=? AND hm.ativo=TRUE AND mp.status='Ativo' AND mp.data_inicio<=CURDATE()
+    AND (mp.data_fim IS NULL OR mp.data_fim>=CURDATE())
+    AND (hm.dias_semana IS NULL OR FIND_IN_SET(ELT(WEEKDAY(CURDATE())+1,'Seg','Ter','Qua','Qui','Sex','Sab','Dom'),hm.dias_semana)>0)
+    LIMIT 1 FOR UPDATE`,[req.usuarioDomiciliar.id,horarioId]);
+    const item=registros[0];if(!item){await conexao.rollback();return res.status(403).json({erro:'Horário não disponível para esta conta.'});}
+    const [existentes]=await conexao.execute('SELECT id FROM registros_medicamentos WHERE horario_id=? AND data_programada=CURDATE() FOR UPDATE',[horarioId]);
+    if(existentes.length){await conexao.rollback();return res.status(409).json({erro:'Este horário já foi registrado hoje.'});}
+    await conexao.execute(`INSERT INTO registros_medicamentos(horario_id,medicamento_paciente_id,paciente_id,data_programada,horario_programado,situacao,data_hora_real,usuario_domiciliar_id,origem_registro)
+      SELECT hm.id,mp.id,mp.paciente_id,CURDATE(),hm.horario,?,CASE WHEN ?='Administrado' THEN NOW() ELSE NULL END,?,'Aplicativo'
+      FROM horarios_medicamentos hm JOIN medicamentos_pacientes mp ON mp.id=hm.medicamento_paciente_id WHERE hm.id=?`,[situacao,situacao,req.usuarioDomiciliar.id,horarioId]);
+    await conexao.commit();res.status(201).json({mensagem:'Situação informada. O registro não substitui a prescrição.'});
+  }catch(e){if(conexao)await conexao.rollback();if(e.code==='ER_DUP_ENTRY')return res.status(409).json({erro:'Horário já registrado hoje.'});next(e);}finally{conexao?.release();}
 });
 module.exports={rotasCuidado};
