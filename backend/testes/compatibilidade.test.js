@@ -20,3 +20,15 @@ test('registro domiciliar confere permissões e datas',()=>{
  assert.match(rota,/v\.pode_ver_medicamentos=TRUE/);
  assert.match(rota,/CURDATE\(\)/);
 });
+
+test('a listagem de rotinas inclui medicamentos reais, horários e filtro por profissional',()=>{
+  const rota=ler('src/rotas/rotinas.js');
+  const tela=fs.readFileSync(path.join(__dirname,'../../frontend/src/paginas/Acompanhamento.jsx'),'utf8');
+  assert.match(rota,/JOIN medicamentos_pacientes mp/);
+  assert.match(rota,/LEFT JOIN horarios_medicamentos hm/);
+  assert.match(rota,/WHERE r.paciente_id=\? AND r.fisioterapeuta_id=\?/);
+  assert.match(rota,/medicamentos:\[\]/);
+  assert.match(tela,/r\.total_medicamentos/);
+  assert.match(tela,/r\.medicamentos\.map/);
+  assert.match(tela,/m\.nome/);
+});

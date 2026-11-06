@@ -9,6 +9,7 @@ const {rotasPacientes}=require('./src/rotas/pacientes');
 const {rotasRotinas}=require('./src/rotas/rotinas');
 const {rotasConvites}=require('./src/rotas/convites');
 const {rotasCuidado}=require('./src/rotas/cuidado');
+const {rotasAcompanhamentoClinico}=require('./src/rotas/acompanhamento-clinico');
 if(!process.env.SEGREDO_JWT||process.env.SEGREDO_JWT.length<32||process.env.SEGREDO_JWT.includes('substitua'))
   throw new Error('Defina SEGREDO_JWT (ao menos 32 caracteres aleatórios) no backend/.env.');
 const aplicacao=express();aplicacao.disable('x-powered-by');aplicacao.disable('etag');
@@ -21,6 +22,7 @@ aplicacao.use('/api',rotasAutenticacao);
 aplicacao.use('/api/dashboard',rotasDashboard);
 aplicacao.use('/api/pacientes',rotasPacientes);
 aplicacao.use('/api/rotinas',rotasRotinas);
+aplicacao.use('/api/acompanhamento-clinico',rotasAcompanhamentoClinico);
 aplicacao.use('/api',rotasConvites);
 aplicacao.use('/api/cuidado',rotasCuidado);
 aplicacao.use((_req,res)=>res.status(404).json({erro:'Rota não encontrada.'}));

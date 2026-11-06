@@ -3,6 +3,7 @@ import {apiRequest} from './servicos/api.js';
 import LoginFisioterapeuta from './paginas/LoginFisioterapeuta.jsx';
 import Dashboard from './paginas/Dashboard.jsx';
 import Acompanhamento from './paginas/Acompanhamento.jsx';
+import AcompanhamentoClinico from './paginas/AcompanhamentoClinico.jsx';
 const CHAVE='cuidar-fisioterapeuta-session';
 function lerSessao(){try{const s=JSON.parse(sessionStorage.getItem(CHAVE));return s?.token&&s.usuario?.perfil==='fisioterapeuta'?s:null;}catch{return null;}}
 export default function PortalAutenticacao(){
@@ -21,7 +22,9 @@ export default function PortalAutenticacao(){
   function sair(){sessionStorage.removeItem(CHAVE);definirSessao(null);definirErro('');}
   if(sessao){return window.location.pathname==='/acompanhamento'
     ? <Acompanhamento sessao={sessao} aoSair={sair}/>
-    : <Dashboard sessao={sessao} aoSair={sair}/>;}
+    : window.location.pathname==='/acompanhamento-clinico'
+      ? <AcompanhamentoClinico sessao={sessao} aoSair={sair}/>
+      : <Dashboard sessao={sessao} aoSair={sair}/>;}
   return <LoginFisioterapeuta email={email} definirEmail={definirEmail} senha={senha} definirSenha={definirSenha}
     aoEntrar={entrar} carregando={carregando} erro={erro} mensagem=""/>;
 }

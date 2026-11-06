@@ -28,7 +28,59 @@ rotasRotinas.get('/',async(req,res,next)=>{
   const [rotinas]=await banco.execute(`SELECT r.id,r.titulo,r.status,DATE_FORMAT(r.data_inicio,'%Y-%m-%d') AS data_inicio,DATE_FORMAT(r.data_fim,'%Y-%m-%d') AS data_fim,
   (SELECT COUNT(*) FROM rotinas_itens ri WHERE ri.rotina_id=r.id) AS total_exercicios,
   (SELECT COUNT(*) FROM rotinas_medicamentos rm WHERE rm.rotina_id=r.id) AS total_medicamentos FROM rotinas r WHERE r.paciente_id=? AND r.fisioterapeuta_id=? ORDER BY r.data_inicio DESC`,[paciente,req.usuario.id]);
-  res.json({rotinas});}catch(e){next(e);}
+  // Reúne os medicamentos e horários associados a cada rotina do profissional.
+  // A filtragem por paciente e fisioterapeuta é obrigatória para proteger os dados clínicos.
+  const [programacoes]=await banco.execute(`
+    SELECT rm.rotina_id,
+           mp.id AS medicamento_paciente_id,
+           m.nome,
+           m.apresentacao,
+           mp.dose_informada,
+           mp.via_administracao,
+           mp.frequencia_texto,
+           mp.orientacao_prescrita,
+           mp.status AS status_medicamento,
+           hm.horario,
+           hm.dias_semana
+      FROM rotinas_medicamentos rm
+      JOIN rotinas r ON r.id=rm.rotina_id
+      JOIN medicamentos_pacientes mp
+        ON mp.id=rm.medicamento_paciente_id AND mp.paciente_id=r.paciente_id
+      JOIN medicamentos m ON m.id=mp.medicamento_id
+      LEFT JOIN horarios_medicamentos hm
+        ON hm.medicamento_paciente_id=mp.id AND hm.ativo=TRUE
+     WHERE r.paciente_id=? AND r.fisioterapeuta_id=?
+     ORDER BY rm.rotina_id DESC,m.nome,hm.horario`,[paciente,req.usuario.id]);
+  const rotinasPorId=new Map(rotinas.map(r=>[Number(r.id),{...r,medicamentos:[]}]));
+  const medicamentosPorPrescricao=new Map();
+  for(const item of programacoes){
+    const rotina=rotinasPorId.get(Number(item.rotina_id));
+    if(!rotina)continue;
+    const chave=`${item.rotina_id}:${item.medicamento_paciente_id}`;
+    let medicamento=medicamentosPorPrescricao.get(chave);
+    if(!medicamento){
+      medicamento={
+        medicamento_paciente_id:item.medicamento_paciente_id,
+        nome:item.nome,
+        apresentacao:item.apresentacao,
+        dose_informada:item.dose_informada,
+        via_administracao:item.via_administracao,
+        frequencia_texto:item.frequencia_texto,
+        orientacao_prescrita:item.orientacao_prescrita,
+        status:item.status_medicamento,
+        horarios:[]
+      };
+      rotina.medicamentos.push(medicamento);
+      medicamentosPorPrescricao.set(chave,medicamento);
+    }
+    if(item.horario!==null){
+      medicamento.horarios.push({
+        horario:String(item.horario).slice(0,5),
+        dias_semana:item.dias_semana
+      });
+    }
+  }
+  res.json({rotinas:[...rotinasPorId.values()]});}catch(e){next(e);}
 });
 rotasRotinas.post('/',async(req,res,next)=>{
   const paciente=idPositivo(req.body?.paciente_id),titulo=texto(req.body?.titulo,100),inicio=req.body?.data_inicio,fim=req.body?.data_fim||null;

@@ -22,7 +22,7 @@ export default function Acompanhamento({sessao,aoSair}){
   const atualizar=useCallback(async()=>{
     const [p,e,m]=await Promise.all([apiRequest('/api/pacientes',{token}),apiRequest('/api/rotinas/exercicios',{token}),apiRequest('/api/rotinas/medicamentos',{token})]);
     setPacientes(p.pacientes||[]);setExercicios(e.exercicios||[]);setMedicamentosCatalogo(m.medicamentos||[]);
-    setEscolhido(anterior=>anterior&&p.pacientes.some(x=>x.id===anterior)?anterior:(p.pacientes[0]?.id||null));
+    setEscolhido(anterior=>{const indicado=Number(new URLSearchParams(window.location.search).get('paciente_id'));return anterior&&p.pacientes.some(x=>x.id===anterior)?anterior:(p.pacientes.find(x=>x.id===indicado)?.id||p.pacientes[0]?.id||null);});
   },[token]);
   useEffect(()=>{atualizar().catch(e=>setErro(e.message));},[atualizar]);
   useEffect(()=>{
@@ -68,8 +68,20 @@ export default function Acompanhamento({sessao,aoSair}){
     {erro&&<div role="alert" className="ac-erro">{erro}</div>}{mensagem&&<div role="status" className="ac-sucesso">{mensagem}</div>}
     <div className="ac-layout"><section className="ac-cartao ac-pacientes"><h2>Seus pacientes <span>{pacientes.length}</span></h2>
       <label>Selecionar paciente<select value={escolhido||''} onChange={e=>{setEscolhido(Number(e.target.value)||null);setLink('');}}><option value="">Selecione...</option>{pacientes.map(p=><option value={p.id} key={p.id}>{p.nome} — {p.status}</option>)}</select></label>
-      {paciente?<><p><b>{paciente.nome}</b></p><p>{paciente.patologia_principal}</p><p className="ac-miudo">Status: {paciente.status}</p></>:<p className="ac-miudo">Nenhum paciente ainda. Cadastre o primeiro.</p>}
-      <h3>Rotinas</h3>{rotinas.length?rotinas.map(r=><div className="ac-linha" key={r.id}><b>{r.titulo}</b><small>{r.status} · {r.total_exercicios} exercícios</small></div>):<p className="ac-miudo">Nenhuma rotina criada.</p>}
+      {paciente?<><p><b>{paciente.nome}</b></p><p>{paciente.patologia_principal}</p><p className="ac-miudo">Status: {paciente.status}</p><a href={`/acompanhamento-clinico?paciente_id=${paciente.id}`} className="ac-botao-sec" style={{display:'inline-flex',margin:'8px 0 4px'}}>Ver acompanhamento completo</a></>:<p className="ac-miudo">Nenhum paciente ainda. Cadastre o primeiro.</p>}
+      <h3>Rotinas</h3>{rotinas.length?rotinas.map(r=><div className="ac-linha ac-rotina-resumo" key={r.id}>
+        <b>{r.titulo}</b>
+        <small>{r.status} · {r.total_exercicios} exercício(s) · {r.total_medicamentos ?? r.medicamentos?.length ?? 0} medicamento(s)</small>
+        {Array.isArray(r.medicamentos)&&r.medicamentos.length>0&&<div className="ac-rotina-lista-medicamentos" aria-label={`Medicamentos da rotina ${r.titulo}`}>
+          {r.medicamentos.map(m=><div className="ac-rotina-medicamento" key={m.medicamento_paciente_id}>
+            <span className="ac-rotina-medicamento-titulo"><Icone nome="medication"/>{m.nome}</span>
+            {m.apresentacao&&<small>{m.apresentacao}</small>}
+            <small><b>Dose informada:</b> {m.dose_informada} · {m.via_administracao}</small>
+            {m.horarios?.length>0&&<small><b>Horários:</b> {m.horarios.map(h=>`${h.horario} (${h.dias_semana?String(h.dias_semana).replaceAll(',', ', '):'todos os dias'})`).join(' · ')}</small>}
+            <small><b>Situação:</b> {m.status}</small>
+          </div>)}
+        </div>}
+      </div>):<p className="ac-miudo">Nenhuma rotina criada.</p>}
       <h3>Check-ins recentes</h3>{historico.length?historico.map(c=><div className="ac-linha" key={c.id}><b>{c.data_registro} · dor {c.nivel_dor}/10</b><small>{c.itens_concluidos}/{c.total_itens} exercícios · {c.registrado_por||'Registro anterior'} · {c.origem_registro}</small>{c.observacoes_paciente&&<small>{c.observacoes_paciente}</small>}</div>):<p className="ac-miudo">Nenhum check-in registrado.</p>}
     </section><section className="ac-cartao ac-editor">
       <div className="ac-abas" role="group" aria-label="Escolha a operação">
