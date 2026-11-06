@@ -52,7 +52,7 @@ rotasRotinas.post('/',async(req,res,next)=>{
     for(const m of medicamentos){
       const [pr]=await conexao.execute(`INSERT INTO medicamentos_pacientes(paciente_id,medicamento_id,registrado_por_fisioterapeuta_id,prescritor_nome,referencia_prescricao,orientacao_prescrita,dose_informada,via_administracao,frequencia_texto,data_inicio,data_fim)
        VALUES(?,?,?,?,?,?,?,?,?,?,?)`,[paciente,m.medicamento_id,req.usuario.id,m.prescritor_nome.trim(),m.referencia_prescricao.trim(),m.orientacao_prescrita.trim(),m.dose_informada.trim(),m.via_administracao.trim(),m.frequencia_texto.trim(),inicio,fim]);
-      await conexao.execute('INSERT INTO rotinas_medicamentos(rotina_id,medicamento_paciente_id) VALUES(?,?)',[r.insertId,pr.insertId]);
+      await conexao.execute('INSERT INTO rotinas_medicamentos(rotina_id,medicamento_paciente_id,paciente_id) VALUES(?,?,?)',[r.insertId,pr.insertId,paciente]);
       for(const horario of m.horarios)await conexao.execute('INSERT INTO horarios_medicamentos(medicamento_paciente_id,horario,dias_semana) VALUES(?,?,?)',[pr.insertId,`${horario}:00`,normalizarDias(m.dias_semana)]);
     }
     await conexao.commit();res.status(201).json({id:r.insertId,mensagem:'Rotina salva com exercícios e medicamentos.'});

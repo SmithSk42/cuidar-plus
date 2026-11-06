@@ -15,7 +15,7 @@ rotasDashboard.get('/',async(req,res,next)=>{
       p.nome,p.patologia_principal,p.telefone_familiar FROM alertas a JOIN pacientes p ON p.id=a.paciente_id
       WHERE p.fisioterapeuta_id=? AND a.nivel_urgencia='Urgente' AND a.status='Pendente'
       ORDER BY a.criado_em DESC LIMIT 6`,[id]);
-    // Todas as rotinas ativas no período são consideradas programadas diariamente.
+    // Dias previstos respeitam a agenda da rotina e de cada exercício.
     // Um dia SEM check-in conta como 'sem confirmação', nunca como executado.
     const [registros]=await banco.execute(`WITH RECURSIVE dias AS (
       SELECT DATE(${dataInicial}) AS dia
@@ -25,7 +25,9 @@ rotasDashboard.get('/',async(req,res,next)=>{
       FROM dias d JOIN pacientes p ON p.fisioterapeuta_id=? AND p.status='Ativo'
       JOIN rotinas r ON r.paciente_id=p.id AND r.status='Ativa'
         AND r.data_inicio<=d.dia AND (r.data_fim IS NULL OR r.data_fim>=d.dia)
+        AND (r.dias_semana IS NULL OR FIND_IN_SET(ELT(WEEKDAY(d.dia)+1,'Seg','Ter','Qua','Qui','Sex','Sab','Dom'),r.dias_semana)>0)
       JOIN rotinas_itens ri ON ri.rotina_id=r.id
+        AND (ri.dias_semana IS NULL OR FIND_IN_SET(ELT(WEEKDAY(d.dia)+1,'Seg','Ter','Qua','Qui','Sex','Sab','Dom'),ri.dias_semana)>0)
     ), contabilizado AS (
       SELECT e.paciente_id,COUNT(*) AS total_previstos,
         COALESCE(SUM(CASE WHEN ci.concluido=TRUE THEN 1 ELSE 0 END),0) AS total_concluidos
@@ -49,7 +51,9 @@ rotasDashboard.get('/',async(req,res,next)=>{
       FROM dias d JOIN pacientes p ON p.fisioterapeuta_id=? AND p.status='Ativo'
       JOIN rotinas r ON r.paciente_id=p.id AND r.status='Ativa'
         AND r.data_inicio<=d.dia AND (r.data_fim IS NULL OR r.data_fim>=d.dia)
-      WHERE EXISTS(SELECT 1 FROM rotinas_itens ri WHERE ri.rotina_id=r.id)
+        AND (r.dias_semana IS NULL OR FIND_IN_SET(ELT(WEEKDAY(d.dia)+1,'Seg','Ter','Qua','Qui','Sex','Sab','Dom'),r.dias_semana)>0)
+      WHERE EXISTS(SELECT 1 FROM rotinas_itens ri WHERE ri.rotina_id=r.id
+        AND (ri.dias_semana IS NULL OR FIND_IN_SET(ELT(WEEKDAY(d.dia)+1,'Seg','Ter','Qua','Qui','Sex','Sab','Dom'),ri.dias_semana)>0))
     ) SELECT COUNT(*) AS esperados,COALESCE(SUM(c.id IS NOT NULL),0) AS realizados
     FROM previstos e LEFT JOIN checkins c ON c.paciente_id=e.paciente_id AND c.rotina_id=e.rotina_id AND c.data_registro=e.dia`,[id]);
     res.json({pacientesAtivos:ativos.total,variacaoPacientes:novos.total,

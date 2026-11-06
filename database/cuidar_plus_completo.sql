@@ -1,10 +1,10 @@
 -- ============================================================================
 -- CUIDAR+ | ESQUEMA CONSOLIDADO PARA DESENVOLVIMENTO
--- MySQL 8.0.16+ | 05/11/2026
+-- MySQL 8.0.16+ | base unica de desenvolvimento
 -- CUIDADO: DROP DATABASE APAGA TODAS AS CONTAS, DADOS E CONVITES ANTERIORES.
 -- NUNCA EXECUTAR SOBRE DADOS REAIS / PRODUCAO.
--- Teste de ponta a ponta exige atualizar backend para novos modulos.
--- Tabelas antigas preservadas nos nomes/campos usados pela API primeiro-fluxo.
+-- Backend atualizado para as estruturas aqui declaradas; testar contra MySQL real.
+-- Fonte unica de verdade de DESENVOLVIMENTO: SQL, backend e frontend deste pacote.
 -- Sem prescricao automatica, diagnostico ou monitoramento emergencial 24/7.
 -- ============================================================================
 
@@ -233,7 +233,7 @@ CREATE TABLE alertas (
     comentario_resolucao VARCHAR(500) NULL,
     CONSTRAINT fk_alerta_paciente 
         FOREIGN KEY (paciente_id) 
-        REFERENCES pacientes(id) ON DELETE CASCADE,
+        REFERENCES pacientes(id) ON DELETE RESTRICT,
         
     CONSTRAINT fk_alerta_fisioterapeuta 
         FOREIGN KEY (fisioterapeuta_id) 
@@ -368,9 +368,12 @@ CREATE TABLE horarios_medicamentos (
 CREATE TABLE rotinas_medicamentos (
  rotina_id INT NOT NULL,
  medicamento_paciente_id BIGINT NOT NULL,
+ paciente_id INT NOT NULL,
  PRIMARY KEY(rotina_id, medicamento_paciente_id),
- FOREIGN KEY(rotina_id) REFERENCES rotinas(id) ON DELETE RESTRICT,
- FOREIGN KEY(medicamento_paciente_id) REFERENCES medicamentos_pacientes(id) ON DELETE RESTRICT
+ CONSTRAINT fk_rotina_medicamento_mesmo_paciente
+   FOREIGN KEY (rotina_id,paciente_id) REFERENCES rotinas(id,paciente_id) ON DELETE RESTRICT,
+ CONSTRAINT fk_medicamento_prescricao_mesmo_paciente
+   FOREIGN KEY (medicamento_paciente_id,paciente_id) REFERENCES medicamentos_pacientes(id,paciente_id) ON DELETE RESTRICT
 ) ENGINE=InnoDB;
 
 -- Um status por horario/data. Sem resposta e diferente de nao administrado.
@@ -735,7 +738,7 @@ VALUES (@maria,@med_a,@fisio_ana,'Profissional prescritor ficticio','[TESTE] Ori
 SET @mp_a=(SELECT id FROM medicamentos_pacientes WHERE paciente_id=@maria AND medicamento_id=@med_a);
 INSERT INTO horarios_medicamentos (medicamento_paciente_id,horario)
 VALUES (@mp_a,'09:00:00'),(@mp_a,'20:00:00');
-INSERT INTO rotinas_medicamentos (rotina_id,medicamento_paciente_id) SELECT id,@mp_a FROM rotinas WHERE paciente_id=@maria ORDER BY id LIMIT 1;
+INSERT INTO rotinas_medicamentos (rotina_id,medicamento_paciente_id,paciente_id) SELECT id,@mp_a,@maria FROM rotinas WHERE paciente_id=@maria ORDER BY id LIMIT 1;
 SET @horario_manha=(SELECT id FROM horarios_medicamentos WHERE medicamento_paciente_id=@mp_a AND horario='09:00:00');
 -- Dado de teste apenas de confirmacao ilustrativa; nao representa recomendacao medica.
 INSERT INTO registros_medicamentos

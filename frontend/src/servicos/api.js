@@ -1,4 +1,5 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+// Em desenvolvimento, o Vite encaminha /api ao backend. Também funciona pelo IP do notebook no celular.
+const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
 export async function apiRequest(path, options = {}) {
   const { token, ...fetchOptions } = options;
@@ -7,6 +8,7 @@ export async function apiRequest(path, options = {}) {
   try {
     response = await fetch(`${API_URL}${path}`, {
       ...fetchOptions,
+      cache: 'no-store',
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -25,7 +27,9 @@ export async function apiRequest(path, options = {}) {
     throw new Error('A API respondeu em um formato inesperado.');
   }
   if (!response.ok) {
-    throw new Error(data.erro || 'Não foi possível concluir a solicitação.');
+    const erro = new Error(data.erro || 'Não foi possível concluir a solicitação.');
+    erro.status = response.status;
+    throw erro;
   }
   return data;
 }

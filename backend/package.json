@@ -7,8 +7,9 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "test": "node --test",
-    "create:fisioterapeuta": "node scripts/create-fisioterapeuta.js",
-    "criar:fisioterapeuta": "node scripts/create-fisioterapeuta.js"
+    "criar:fisioterapeuta": "node scripts/create-fisioterapeuta.js",
+    "verificar:banco": "node scripts/verificar-banco.js",
+    "redefinir:senha-fisioterapeuta": "node scripts/redefinir-senha-fisioterapeuta.js"
   },
   "keywords": [],
   "author": "",

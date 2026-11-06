@@ -1,16 +1,11 @@
-# React + Vite
+# Cuidar+ — Frontend React/Vite
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Painel do fisioterapeuta e portal domiciliar compartilham a API do backend.
 
-Currently, two official plugins are available:
+- `npm install` e `npm run dev` para desenvolver.
+- O proxy local encaminha `/api` para `127.0.0.1:3000`.
+- No celular, acesse `http://IP_DO_COMPUTADOR:5173/cuidado` na mesma rede Wi-Fi.
+- Não crie `.env` com `VITE_API_URL=http://localhost:3000` para testes pelo celular.
+- **Produção exige HTTPS, reverse proxy e revisão de segurança.**
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Veja `../LEIA-ME-CORRECOES.md`.
