@@ -1,5 +1,7 @@
 import {useCallback,useEffect,useState} from 'react';
 import {apiRequest} from '../servicos/api.js';
+import {Link} from 'react-router-dom';
+import ConfirmacaoSaida from '../componentes/ConfirmacaoSaida.jsx';
 import './acompanhamento.css';
 const agora=new Date();
 const hoje=new Date(agora.getTime()-agora.getTimezoneOffset()*60000).toISOString().slice(0,10);
@@ -63,12 +65,12 @@ export default function Acompanhamento({sessao,aoSair}){
   function alternarDia(tipo,id,dia,dias){const novos=dias.includes(dia)?dias.filter(d=>d!==dia):DIAS.filter(d=>dias.includes(d)||d===dia);if(novos.length)alterarItem(tipo,id,'dias_semana',novos);}
   function DiasSemana({tipo,id,dias}){return <fieldset className="ac-dias"><legend>Dias da semana</legend>{DIAS.map((d,k)=><label key={d}><input type="checkbox" checked={dias.includes(d)} onChange={()=>alternarDia(tipo,id,d,dias)}/><span>{['S','T','Q','Q','S','S','D'][k]}</span><small>{d}</small></label>)}</fieldset>;}
   return <main className="ac-app">
-    <header className="ac-topo"><div className="ac-marca"><Icone nome="cardiology"/><b>Cuidar<span>+</span></b><small>Acompanhamento domiciliar</small></div><nav><a href="/">Dashboard</a><button type="button" onClick={aoSair}>Sair</button></nav></header>
-    <div className="ac-miolo"><div className="ac-intro"><div><p className="ac-sobretitulo">PAINEL DO FISIOTERAPEUTA</p><h1>Acompanhamento dos pacientes</h1><p>Cadastre um paciente, prepare uma rotina e convide a pessoa autorizada a registrar o cuidado em casa.</p></div><a href="/" className="ac-botao-sec">Voltar à dashboard</a></div>
+    <header className="ac-topo"><Link to="/dashboard" className="ac-marca" style={{textDecoration:"none"}}><Icone nome="cardiology"/><b>Cuidar<span>+</span></b><small>Acompanhamento domiciliar</small></Link><nav><Link to="/dashboard">Dashboard</Link><ConfirmacaoSaida aoSair={aoSair}>Sair</ConfirmacaoSaida></nav></header>
+    <div className="ac-miolo"><div className="ac-intro"><div><p className="ac-sobretitulo">PAINEL DO FISIOTERAPEUTA</p><h1>Acompanhamento dos pacientes</h1><p>Cadastre um paciente, prepare uma rotina e convide a pessoa autorizada a registrar o cuidado em casa.</p></div><Link to="/dashboard" className="ac-botao-sec">Voltar à dashboard</Link></div>
     {erro&&<div role="alert" className="ac-erro">{erro}</div>}{mensagem&&<div role="status" className="ac-sucesso">{mensagem}</div>}
     <div className="ac-layout"><section className="ac-cartao ac-pacientes"><h2>Seus pacientes <span>{pacientes.length}</span></h2>
       <label>Selecionar paciente<select value={escolhido||''} onChange={e=>{setEscolhido(Number(e.target.value)||null);setLink('');}}><option value="">Selecione...</option>{pacientes.map(p=><option value={p.id} key={p.id}>{p.nome} — {p.status}</option>)}</select></label>
-      {paciente?<><p><b>{paciente.nome}</b></p><p>{paciente.patologia_principal}</p><p className="ac-miudo">Status: {paciente.status}</p><a href={`/acompanhamento-clinico?paciente_id=${paciente.id}`} className="ac-botao-sec" style={{display:'inline-flex',margin:'8px 0 4px'}}>Ver acompanhamento completo</a></>:<p className="ac-miudo">Nenhum paciente ainda. Cadastre o primeiro.</p>}
+      {paciente?<><p><b>{paciente.nome}</b></p><p>{paciente.patologia_principal}</p><p className="ac-miudo">Status: {paciente.status}</p><Link to={`/acompanhamento-clinico?paciente_id=${paciente.id}`} className="ac-botao-sec" style={{display:'inline-flex',margin:'8px 0 4px'}}>Ver acompanhamento completo</Link></>:<p className="ac-miudo">Nenhum paciente ainda. Cadastre o primeiro.</p>}
       <h3>Rotinas</h3>{rotinas.length?rotinas.map(r=><div className="ac-linha ac-rotina-resumo" key={r.id}>
         <b>{r.titulo}</b>
         <small>{r.status} · {r.total_exercicios} exercício(s) · {r.total_medicamentos ?? r.medicamentos?.length ?? 0} medicamento(s)</small>
