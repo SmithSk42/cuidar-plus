@@ -283,3 +283,7 @@
     padding: 20px 16px;
   }
 }
+
+.patient-app-dashboard {display:block;padding:0;background:#f8f9ff;}
+.patient-app-dashboard > .patient-shell {width:100%;max-width:none;}
+.patient-app-dashboard .physio-home {display:block;}

@@ -1,70 +1,16 @@
 require('dotenv').config();
-
-const { StringDecoder } = require('node:string_decoder');
-const { AccountError, createAccount } = require('../src/services/accounts');
-
-function perguntarSenhaOculta(prompt) {
-  const input = process.stdin;
-  if (!input.isTTY || typeof input.setRawMode !== 'function') {
-    return Promise.reject(new Error('Execute este comando em um terminal interativo para ocultar a senha.'));
-  }
-
-  return new Promise((resolve, reject) => {
-    let senha = '';
-    const decoder = new StringDecoder('utf8');
-    process.stdout.write(prompt);
-    input.setRawMode(true);
-    input.resume();
-
-    function finalizar(error) {
-      input.setRawMode(false);
-      input.pause();
-      input.removeListener('data', receber);
-      process.stdout.write('\n');
-      if (error) reject(error);
-      else resolve(senha);
-    }
-
-    function receber(buffer) {
-      for (const character of decoder.write(buffer)) {
-        if (character === '\u0003') return finalizar(new Error('Operação cancelada.'));
-        if (character === '\r' || character === '\n') return finalizar();
-        if (character === '\b' || character === '\u007f') {
-          if (senha.length) senha = senha.slice(0, -1);
-          continue;
-        }
-        if (character >= ' ') senha += character;
-      }
-    }
-
-    input.on('data', receber);
-  });
+const bcrypt = require('bcryptjs');
+const banco = require('../src/banco/conexao');
+async function principal(){
+  const senha=process.env.SENHA_FISIOTERAPEUTA_INICIAL;
+  const email=(process.env.EMAIL_FISIOTERAPEUTA_INICIAL||'fisio@cuidarplus.com').toLowerCase();
+  const nome=process.env.NOME_FISIOTERAPEUTA_INICIAL||'Fisioterapeuta Teste';
+  const crefito=process.env.CREFITO_FISIOTERAPEUTA_INICIAL||'TESTE-001';
+  if(!senha||senha.length<12)throw Error('Configure SENHA_FISIOTERAPEUTA_INICIAL com pelo menos 12 caracteres no backend/.env.');
+  const [existentes]=await banco.execute('SELECT id FROM fisioterapeutas WHERE email=? LIMIT 1',[email]);
+  if(existentes.length) {console.log('Conta já cadastrada. Nada foi alterado: '+email);return;}
+  const hash=await bcrypt.hash(senha,12);
+  await banco.execute('INSERT INTO fisioterapeutas(nome,crefito,email,senha_hash,ativo) VALUES(?,?,?,?,TRUE)',[nome,crefito,email,hash]);
+  console.log('Conta de teste criada: '+email+' (senha não exibida).');
 }
-
-async function main() {
-  const readline = require('node:readline/promises');
-  const prompt = readline.createInterface({ input: process.stdin, output: process.stdout });
-
-  try {
-    const nome = (await prompt.question('Nome completo: ')).trim();
-    const crefito = (await prompt.question('CREFITO: ')).trim();
-    const email = (await prompt.question('E-mail: ')).trim().toLowerCase();
-    prompt.close();
-
-    const senha = await perguntarSenhaOculta('Senha (mínimo 8 caracteres; não será exibida): ');
-    await createAccount('fisioterapeuta', { nome, crefito, email, senha });
-    console.log('Conta de fisioterapeuta criada. Já pode entrar em /fisioterapeuta.');
-  } catch (error) {
-    if (error instanceof AccountError) {
-      console.error(`Não foi possível criar a conta: ${error.message}`);
-      process.exitCode = 1;
-    } else {
-      console.error(`Não foi possível criar a conta de fisioterapeuta: ${error.message}`);
-      process.exitCode = 1;
-    }
-  } finally {
-    prompt.close();
-  }
-}
-
-main();
+principal().catch(e=>{console.error('Falha no cadastro:',e.message);process.exitCode=1;}).finally(()=>banco.end());

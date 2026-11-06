@@ -1,151 +1,118 @@
-# 🏥 Cuidar+ (Cuida Mais)
+# Cuidar+ — primeira etapa do acompanhamento domiciliar
 
-Projeto de extensão desenvolvido pelos alunos do Bacharelado em Sistemas de Informação (BSI) do Instituto Federal da Bahia (IFBA) para a disciplina de ACEX II.
+Versão de desenvolvimento, construída a partir do ZIP mais recente enviado no chat e do Documento de Visão.
+**Não usar com dados clínicos reais antes de uma avaliação de segurança e privacidade.**
 
-O **Cuidar+** é uma solução digital criada para aproximar a rede de apoio (familiares e cuidadores) do fisioterapeuta responsável, centralizando informações, organizando rotinas de reabilitação e facilitando o acompanhamento da evolução funcional do paciente fora do ambiente clínico.
+## O que está funcional no código
 
-## 🛠️ Stack Tecnológica e Arquitetura
-* **Front-end (Fisioterapeuta):** React.js (Web Dashboard)
-* **Front-end (Paciente):** React (PWA - Progressive Web App focado em acessibilidade para idosos)
-* **Back-end:** Node.js (API REST)
-* **Banco de Dados:** MySQL 8.0.16+
-* **Mensageria:** Integração com API do WhatsApp
+- Login do **fisioterapeuta**, sem perfil separado de administrador e sem exigir a coluna `perfil`.
+- Tela de **acompanhamento**: cadastrar pacientes, cadastrar exercícios no catálogo, criar rotina com itens, visualizar check-ins e criar convite individual.
+- **Portal móvel** para cuidador ou paciente autorizado: ativar convite, criar senha, entrar, visualizar tarefas, confirmar exercícios e registrar dor e observações.
+- API única com Node.js/Express e MySQL. Check-ins e itens são gravados na mesma transação.
+- Dashboard existente adaptada para consultar adesão no período com exercícios programados, contando ausências de registro como **sem confirmação** (e nunca como execução).
+- Manifesto PWA, ícones e página de orientação quando a aplicação estiver offline. Não há gravação offline neste MVP.
 
-## 📂 Estrutura do Repositório (Monorepo)
-* `/frontend`: Contém o código fonte da aplicação Web (React) e PWA.
-* `/backend`: Contém a API REST (Node.js) e as configurações de banco de dados.
-* `/database`: Contém o esquema MySQL e migrações.
+## 1. Antes de tudo: backup
 
-## Autenticação e check-in do paciente
+Faça backup de `cuidar_plus` no Workbench antes de alterar o esquema. Não há `DROP DATABASE` na migração.
 
-O portal do paciente está disponível em `/paciente`. Ele cria contas de paciente,
-faz login pela API e registra check-ins no MySQL. O acesso do fisioterapeuta está
-em `/fisioterapeuta` (também na página inicial); lá é possível cadastrar conta
-com nome, CREFITO, e-mail e senha. Ambos usam `POST /api/login`, que valida a
-senha com bcrypt e retorna JWT; cada portal aceita apenas seu próprio perfil.
-O painel de fisioterapia após o login ainda exibe dados demonstrativos e suas
-funções de cadastro/listagem/tarefas ainda não persistem no MySQL.
+O `database/cuida_mais.sql` serve **somente para criar um banco vazio**. NÃO reexecute o esquema inicial em um banco existente.
 
-O código está organizado em módulos de configuração, banco, middleware,
-serviços e rotas dentro de `backend/src/`. O guia de apresentação com roteiro,
-mapa dos arquivos e falas sugeridas está em
-[`docs/GUIA_APRESENTACAO_AUTENTICACAO.md`](./docs/GUIA_APRESENTACAO_AUTENTICACAO.md).
+Em banco **já existente**, execute nesta ordem:
 
-### Configuração local
+1. `database/migracoes/002_verificacoes_antes.sql` — as primeiras cinco consultas de inconsistências precisam retornar **zero linhas**. Se houver inconsistências, corrija-as antes de prosseguir.
+2. `database/migracoes/002_acompanhamento_domiciliar.sql` — execute **uma única vez**, com todo o script selecionado.
 
-1. Instale e inicie o MySQL Server 8.0.16+ e crie as tabelas executando
-   `database/schema.sql` no MySQL Workbench ou no cliente MySQL a partir da raiz:
+ATENÇÃO: MySQL faz `COMMIT` implícito nos comandos DDL (`ALTER TABLE`); se uma migração falhar na metade, não reexecute cegamente. Verifique onde parou e restaure o backup ou ajuste o trecho pendente.
 
-   No PowerShell deste computador, na raiz do repositório:
+A migração preserva dados, cria contas domiciliares e convites, permite um check-in **por rotina e por dia** e fortalece as chaves estrangeiras. Ela assume MySQL 8.0.16+.
 
-   ```powershell
-   & "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" --user=root --password --execute="source database/schema.sql"
-   ```
+Se estiver criando um banco realmente **vazio**, execute `database/cuida_mais.sql`, depois apenas a migração 002. A migração 001 de perfis NÃO é necessária para esta versão.
 
-   O cliente solicitará a senha administrativa localmente; não coloque essa
-   senha no comando nem no repositório. Se `mysql` estiver no `PATH`, também
-   pode usar `mysql --user=root --password --execute="source database/schema.sql"`.
+## 2. Backend
 
-   O script cria o banco `cuidar_plus` e as tabelas necessárias. Para um MySQL
-   que já tenha a tabela `pacientes`, mas ainda não tenha as colunas `email` e
-   `senha_hash`, aplique `database/migrations/001_patient_auth.mysql.sql` uma
-   única vez, em vez de reaplicar o esquema completo.
-2. Crie um usuário exclusivo para a API no MySQL (troque a senha de exemplo):
+No PowerShell:
 
-   ```sql
-   CREATE USER 'cuidar_app'@'localhost' IDENTIFIED BY 'defina-uma-senha-forte';
-   GRANT SELECT, INSERT ON cuidar_plus.* TO 'cuidar_app'@'localhost';
-   ```
+```powershell
+cd C:\Users\savio\cuidar-plus\backend
+npm install
+Copy-Item .env.example .env
+```
 
-   Para desenvolvimento com API e banco em máquinas diferentes, configure o
-   host autorizado do usuário e as regras de rede do MySQL para permitir apenas
-   a máquina da API.
-3. Edite `backend/.env` (ou copie `backend/.env.example` caso ainda não exista)
-   e configure `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD` e `DB_NAME`.
-   `JWT_SECRET` precisa ser um segredo aleatório com no mínimo 32 bytes. Não
-   envie o arquivo `.env` ao Git.
-4. Instale as dependências e inicie a API:
+Preencha `backend/.env` com as credenciais reais do MySQL. Gere um novo `SEGREDO_JWT` localmente:
 
-   ```sh
-   cd backend
-   npm install
-   npm run dev
-   ```
+```powershell
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+```
 
-5. Para criar uma conta de fisioterapeuta pela tela, acesse
-   `http://localhost:5173/fisioterapeuta`, selecione **Cadastrar-se** e informe
-   nome, CREFITO, e-mail e senha. O cadastro grava a senha como hash bcrypt.
-   Como alternativa administrativa/local, ainda está disponível o comando
-   `npm run create:fisioterapeuta`, que usa o mesmo serviço de cadastro da API:
+**Não cole `.env` no chat nem distribua no ZIP.**
 
-   ```sh
-   cd backend
-   npm run create:fisioterapeuta
-   ```
+Se ainda não há fisioterapeuta, adicione temporariamente ao `.env`:
 
-   O comando solicita os mesmos dados no terminal e mascara a senha.
-6. Em outro terminal, copie `frontend/.env.example` para `frontend/.env`, ajuste
-   `VITE_API_URL` se necessário e reinicie o Vite para carregar essa variável:
+```env
+SENHA_FISIOTERAPEUTA_INICIAL=uma-senha-forte-com-12-ou-mais-caracteres
+```
 
-   ```sh
-   cd frontend
-   npm install
-   npm run dev
-   ```
+Execute `npm run criar:fisioterapeuta`, remova a variável de senha inicial e depois `npm run dev`.
+Se já existe uma conta de fisioterapeuta, simplesmente use a senha dela.
 
-   Se a API estiver na porta 3001, por exemplo, defina
-   `VITE_API_URL=http://127.0.0.1:3001` em `frontend/.env`.
+Verifique `http://localhost:3000/api/saude`.
 
-### Testar os dois logins
+## 3. Frontend
 
-* **Paciente:** acesse `http://localhost:5173/paciente`, crie a conta, confirme o
-  cadastro e entre usando exatamente o mesmo e-mail e senha. Após o login,
-  registre um check-in e confira o registro na lista da tela e na tabela
-  `checkins` do MySQL.
-* **Fisioterapeuta:** acesse `http://localhost:5173/fisioterapeuta`, selecione
-  **Cadastrar-se**, informe os dados solicitados e entre com o e-mail e senha
-  cadastrados. O portal confirmará o perfil autenticado e abrirá o painel.
-* Para as credenciais conferidas diretamente pela API, `POST /api/login` espera
-  JSON no formato `{"email":"...","senha":"..."}`. Contas antigas de
-  fisioterapeutas só conseguem entrar se `senha_hash` contiver um hash bcrypt
-  compatível; senha em texto puro não é aceita.
+Em outro terminal:
 
-Para testar em um celular físico, use o endereço IP da máquina na rede local em
-`VITE_API_URL` (e inclua a origem do front-end em `CORS_ORIGINS`); `localhost` no
-celular aponta para o próprio celular. Emuladores podem exigir o endereço de
-host específico da plataforma.
+```powershell
+cd C:\Users\savio\cuidar-plus\frontend
+npm install
+npm run dev
+```
 
-### Endpoints implementados
+- `http://localhost:5173/`: login / dashboard profissional.
+- `http://localhost:5173/acompanhamento`: cadastro de paciente, rotina e convite.
+- `http://localhost:5173/cuidado`: portal móvel para o paciente/cuidador.
 
-* `POST /api/pacientes/registro` — cria paciente e armazena a senha com bcrypt.
-* `POST /api/fisioterapeutas/registro` — cria fisioterapeuta com CREFITO, verifica
-  e-mail/CREFITO duplicados e armazena a senha com bcrypt.
-* `POST /api/login` — autentica fisioterapeuta ou paciente e retorna JWT Bearer
-  com validade de uma hora.
-* `POST /api/checkin` — requer JWT de paciente; associa o registro ao paciente
-  do token, valida atividades, dor (0–10) e observações.
-* `GET /api/checkins/meus` — lista até 30 check-ins do paciente autenticado.
-* `GET /api/health` — verifica se a API consegue consultar o MySQL.
+**Teste ponta a ponta:** entre como profissional, cadastre paciente, adicione um exercício, crie rotina com início hoje, gere convite, abra o link em outra janela, ative-o, registre os exercícios e atualize a página de acompanhamento.
 
-### Próximas ações recomendadas
+## 4. Testar no telefone (mesmo Wi-Fi)
 
-O cadastro de paciente e o cadastro de fisioterapeuta são abertos; o CREFITO
-informado não é verificado junto ao conselho profissional. Antes de usar dados
-clínicos reais, restrinja o cadastro de fisioterapeutas a convite/aprovação e
-verifique o registro profissional, além de implementar convite/validação de
-pacientes, vínculo controlado com o profissional responsável, recuperação segura
-de senha, limitação de tentativas de login e HTTPS. No app
-mobile nativo, armazene o token no armazenamento seguro do sistema (Keychain /
-Keystore); a interface web/PWA atual mantém a sessão em `sessionStorage`.
+1. Descubra o IPv4 local do computador (`ipconfig`).
+2. Troque `ORIGEM_FRONTEND` do backend para `http://IP_DO_COMPUTADOR:5173`. Use a mesma origem nos convites.
+3. Crie `frontend/.env` com `VITE_API_URL=http://IP_DO_COMPUTADOR:3000`.
+4. Inicie o frontend com `npm run dev -- --host 0.0.0.0` e o backend com `npm run dev`.
+5. Ajuste o firewall do Windows para permitir acesso apenas da sua rede privada, se necessário.
+6. No celular, abra `http://IP_DO_COMPUTADOR:5173/cuidado` ou o link do convite.
 
-## 👥 Equipe de Desenvolvimento (Grupo A)
-* **Gestor do Processo:** Osmir Santos Meira
-* **Desenvolvedores:**
-  * Lucas Oliveira
-  * Sávio Neri
-  * Sérgio Emílio
-  * Filipe Alves
-  * Luis Felipe da Silva
+**Atenção:** em HTTP pela rede local, não envie dados reais de saúde e não use credenciais pessoais. Para uso real, hospede com HTTPS. A instalação PWA e service workers normalmente exigem HTTPS ou `localhost`.
 
----
-*Projeto em desenvolvimento - Etapas 2 e 3*
+## 5. Rotas principais
+
+| Método | Endpoint | Autenticação |
+|---|---|---|
+| POST | `/api/login` | pública (fisioterapeuta) |
+| GET | `/api/eu` | fisioterapeuta |
+| GET | `/api/dashboard?periodo=hoje` | fisioterapeuta |
+| GET/POST | `/api/pacientes` | fisioterapeuta |
+| GET | `/api/pacientes/:id/acompanhamento` | fisioterapeuta dono |
+| GET/POST | `/api/rotinas/exercicios` | profissional (catálogo compartilhado) |
+| GET/POST | `/api/rotinas` | profissional dono |
+| POST | `/api/pacientes/:pacienteId/convites` | fisioterapeuta dono |
+| POST | `/api/cuidado/ativar` | convite único, expirável |
+| POST | `/api/cuidado/login` | pública (usuário domiciliar) |
+| POST | `/api/cuidado/aceitar-convite` | usuário domiciliar + convite |
+| GET | `/api/cuidado/meu-dia` | usuário domiciliar vinculado |
+| POST | `/api/cuidado/checkins` | usuário domiciliar vinculado |
+
+## 6. Limitações e próximas etapas
+
+- **Ainda não** foram implementados medicamentos, ocorrências de saúde, notificações push, WhatsApp automático, relatório PDF, metas nem agenda.
+- Não há sincronização de registros sem internet, recuperação de senha ou fluxo de revogação de acesso pela interface.
+- Os convites exigem que o profissional tenha verificado a autorização do paciente/responsável. O checkbox **não substitui documentação formal de consentimento/autorização**.
+- O token de convite é válido por 48 horas, de uso único; compartilhe somente pelo canal privado autorizado.
+- Antes de produção: autenticação mais robusta (sessão em cookie HttpOnly e proteção contra CSRF, ou equivalente), TLS, logs de auditoria, redefinição de senha, revogação, limitação distribuída de tentativas, backup, LGPD e testes de integração em MySQL real.
+- Para a adesão, a primeira versão considera a rotina **ativa todos os dias** entre início e fim; um calendário de frequência e histórico de edições exigirão extensão posterior.
+- Não existe monitoramento de emergência em tempo real; o portal não substitui atendimento profissional.
+
+## 7. Validação desta entrega
+
+Rodado localmente: `node --check` em todos os scripts do backend e testes unitários de validação; verificada a sintaxe JSX usando o parser TypeScript. A instalação de pacotes via rede e o teste contra um MySQL real **não puderam ser concluídos no ambiente de criação**, então a interface e os fluxos precisam ser verificados no Windows após `npm install`.
