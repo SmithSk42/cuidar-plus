@@ -25,7 +25,9 @@ const tabelasObrigatorias = [
   "tentativas_entrega",
   "auditoria_acessos",
   "relatos_domiciliares",
-  "autorizacoes_acesso"
+  "autorizacoes_acesso",
+  "correcoes_checkins",
+  "correcoes_medicamentos"
 ];
 const colunasObrigatorias = {
   fisioterapeutas: ['id','nome','email','senha_hash','ativo'],
@@ -42,6 +44,10 @@ const colunasObrigatorias = {
   vinculos_cuidado: ['usuario_id','paciente_id','status','pode_registrar','pode_ver_medicamentos'],
   convites_cuidado: ['id','token_hash','usado_em','expira_em'],
   checkins: ['id','paciente_id','rotina_id','data_registro','nivel_dor','registrado_por_usuario_id'],
+  checkins_itens: ['checkin_id','rotina_item_id','resultado'],
+  ocorrencias: ['id','paciente_id','usuario_domiciliar_id','tipo','intensidade_dor','status'],
+  correcoes_checkins: ['id','checkin_id','usuario_domiciliar_id','motivo','dados_anteriores','dados_novos','criado_em'],
+  correcoes_medicamentos: ['id','registro_medicamento_id','usuario_domiciliar_id','motivo','situacao_anterior','situacao_nova','criado_em'],
   checkins_itens: ['checkin_id','rotina_item_id','rotina_id','concluido'],
   alertas: ['id','paciente_id','fisioterapeuta_id','nivel_urgencia','status'],
   agendamentos: ['id','paciente_id','fisioterapeuta_id','data_hora_inicio'],
@@ -65,7 +71,7 @@ async function verificarEstrutura(banco) {
   if (ausentes.length || colunasAusentes.length) {
     throw new Error(`Banco incompatível com a API. Tabelas ausentes: ${ausentes.join(', ')||'nenhuma'}. `+
       `Colunas ausentes: ${colunasAusentes.join(', ')||'nenhuma'}. `+
-      `Em banco de desenvolvimento, faça backup e execute database/cuidar_plus_completo.sql INTEIRO.`);
+      `Se o banco ja existe, execute a migracao apropriada em database/migracao_portal_mobile.sql com backup.`);
   }
   const [v] = await banco.query(`SELECT TABLE_NAME FROM information_schema.VIEWS
     WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('vw_dashboard_pacientes','vw_resumo_medicamentos')`);

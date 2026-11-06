@@ -207,6 +207,7 @@ CREATE TABLE checkins_itens (
     rotina_id INT NOT NULL,
     concluido BOOLEAN NOT NULL DEFAULT FALSE,
     motivo_nao_realizacao VARCHAR(150) NULL,
+    resultado ENUM('Realizado','Parcial','Nao_Realizado') NULL,
     PRIMARY KEY (checkin_id, rotina_item_id),
     CONSTRAINT fk_checkin_item_checkin FOREIGN KEY (checkin_id) REFERENCES checkins(id) ON DELETE CASCADE,
     CONSTRAINT fk_checkin_item_rotina_item FOREIGN KEY (rotina_item_id) REFERENCES rotinas_itens(id) ON DELETE RESTRICT,
@@ -406,7 +407,8 @@ CREATE TABLE ocorrencias (
  paciente_id INT NOT NULL,
  usuario_domiciliar_id INT NULL,
  fisioterapeuta_id INT NULL,
- tipo ENUM('Queda','Febre','Dor','Sintoma_Atipico','Outro') NOT NULL,
+ tipo ENUM('Queda','Febre','Dor','Sintoma_Atipico','Outro','Exercicio','Medicamento') NOT NULL,
+ intensidade_dor TINYINT UNSIGNED NULL CHECK (intensidade_dor IS NULL OR intensidade_dor BETWEEN 0 AND 10),
  descricao VARCHAR(1000) NOT NULL,
  ocorrido_em DATETIME NOT NULL,
  origem_registro ENUM('Aplicativo','Profissional','Telefone','Papel','WhatsApp') NOT NULL DEFAULT 'Aplicativo',
@@ -418,6 +420,35 @@ CREATE TABLE ocorrencias (
  FOREIGN KEY (fisioterapeuta_id,paciente_id) REFERENCES pacientes(fisioterapeuta_id,id) ON DELETE RESTRICT,
  INDEX idx_ocorrencias_paciente (paciente_id,ocorrido_em),
  INDEX idx_ocorrencias_status (status,criado_em)
+) ENGINE=InnoDB;
+
+-- Historico imutavel de correcoes efetuadas no portal domiciliar.
+CREATE TABLE correcoes_checkins (
+ id BIGINT AUTO_INCREMENT PRIMARY KEY,
+ checkin_id BIGINT NOT NULL,
+ usuario_domiciliar_id INT NOT NULL,
+ motivo VARCHAR(250) NOT NULL,
+ dados_anteriores JSON NOT NULL,
+ dados_novos JSON NOT NULL,
+ criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ FOREIGN KEY(checkin_id) REFERENCES checkins(id) ON DELETE RESTRICT,
+ FOREIGN KEY(usuario_domiciliar_id) REFERENCES usuarios_domiciliares(id) ON DELETE RESTRICT,
+ INDEX idx_correcao_checkin(checkin_id,criado_em)
+) ENGINE=InnoDB;
+
+CREATE TABLE correcoes_medicamentos (
+ id BIGINT AUTO_INCREMENT PRIMARY KEY,
+ registro_medicamento_id BIGINT NOT NULL,
+ usuario_domiciliar_id INT NOT NULL,
+ motivo VARCHAR(250) NOT NULL,
+ situacao_anterior ENUM('Administrado','Nao_Administrado','Adiado') NOT NULL,
+ situacao_nova ENUM('Administrado','Nao_Administrado','Adiado') NOT NULL,
+ horario_real_anterior DATETIME NULL,
+ horario_real_novo DATETIME NULL,
+ criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ FOREIGN KEY(registro_medicamento_id) REFERENCES registros_medicamentos(id) ON DELETE RESTRICT,
+ FOREIGN KEY(usuario_domiciliar_id) REFERENCES usuarios_domiciliares(id) ON DELETE RESTRICT,
+ INDEX idx_correcao_medicamento(registro_medicamento_id,criado_em)
 ) ENGINE=InnoDB;
 
 -- Ligacao opcional do alerta ao relato; nao apaga historico.

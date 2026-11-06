@@ -49,6 +49,7 @@ export default function AcompanhamentoClinico({ sessao, aoSair }) {
   const [aviso, setAviso] = useState('');
   const [carregando, setCarregando] = useState(true);
   const [processandoAlerta, setProcessandoAlerta] = useState(null);
+  const [processandoOcorrencia, setProcessandoOcorrencia] = useState(null);
   const [mostrarContato, setMostrarContato] = useState(false);
   const [editando, setEditando] = useState(false);
   const [formulario, setFormulario] = useState(null);
@@ -115,6 +116,17 @@ export default function AcompanhamentoClinico({ sessao, aoSair }) {
       setAviso('Alerta marcado como resolvido no painel.');
     } catch (e) { setErro(e.message); }
     finally { setProcessandoAlerta(null); }
+  }
+
+  async function atualizarOcorrencia(ocorrencia,status){
+    setErro('');setAviso('');setProcessandoOcorrencia(ocorrencia.id);
+    try{
+      await apiRequest(`/api/acompanhamento-clinico/${pacienteId}/ocorrencias/${ocorrencia.id}`,{
+        method:'PATCH',token,body:{status}
+      });
+      await recarregar(pacienteId);
+      setAviso('Andamento atualizado. Isso não significa resolução clínica.');
+    }catch(e){setErro(e.message);}finally{setProcessandoOcorrencia(null);}
   }
 
   function iniciarEdicao() {
@@ -251,6 +263,27 @@ export default function AcompanhamentoClinico({ sessao, aoSair }) {
               {alertasPendentes.length ? alertasPendentes.map(a => <article key={a.id} className={`acli-alerta ${a.nivel_urgencia === 'Urgente' ? 'urgente' : ''}`}><div className="acli-alerta-topo"><span className="acli-badge laranja">{a.nivel_urgencia}</span><time>{dataBrasileira(a.criado_em, true)}</time></div><p>{a.descricao}</p><button type="button" disabled={processandoAlerta === a.id} onClick={() => resolverAlerta(a)}><Icone nome="check_circle"/>{processandoAlerta === a.id ? 'Salvando...' : 'Marcar como resolvido'}</button></article>) : <CartaoVazio icone="verified" titulo="Nenhum alerta pendente" descricao="Os alertas são gerados a partir dos eventos registrados. Este painel não é um serviço de emergência."/>}
               {(dados.alertas.length > alertasPendentes.length) && <details className="acli-historico-alertas"><summary>Ver alertas concluídos ({dados.alertas.length - alertasPendentes.length})</summary>{dados.alertas.filter(a => a.status !== 'Pendente').map(a => <p key={a.id}><b>{a.status}:</b> {a.descricao} <small>{dataBrasileira(a.resolvido_em || a.criado_em)}</small></p>)}</details>}
             </section>
+            <section className="acli-bloco">
+              <div className="acli-bloco-cabecalho"><div><h2><Icone nome="assignment_late"/> Ocorrências domiciliares</h2><p>Relatos enviados pelo paciente ou cuidador. Acompanhe sem presumir atendimento imediato.</p></div>
+                {(dados.ocorrencias||[]).filter(o=>o.status==='Novo').length>0&&<span className="acli-badge laranja">{dados.ocorrencias.filter(o=>o.status==='Novo').length} novo(s)</span>}
+              </div>
+              {(dados.ocorrencias||[]).length?dados.ocorrencias.map(o=><article className="acli-alerta" key={o.id}>
+                <div className="acli-alerta-topo"><span className={`acli-badge ${o.status==='Encerrado'?'verde':'laranja'}`}>{o.status==='Em_Analise'?'Em análise':o.status==='Encerrado'?'Encerrado':'Novo'}</span><time>{dataBrasileira(o.ocorrido_em,true)}</time></div>
+                <strong>{({Dor:'Dor ou desconforto',Queda:'Queda',Exercicio:'Dificuldade no exercício',Medicamento:'Problema com medicamento',Outro:'Outro problema'})[o.tipo]||o.tipo}</strong>
+                <p>{o.descricao}</p>
+                {o.intensidade_dor!==null&&<p><b>Dor informada:</b> {o.intensidade_dor}/10</p>}
+                <small>Registrado por: {o.registrado_por||'Profissional'}</small>
+                {o.status==='Novo'&&<button type="button" disabled={processandoOcorrencia===o.id} onClick={()=>atualizarOcorrencia(o,'Em_Analise')}><Icone nome="visibility"/> Marcar em análise</button>}
+                {o.status==='Em_Analise'&&<button type="button" disabled={processandoOcorrencia===o.id} onClick={()=>atualizarOcorrencia(o,'Encerrado')}><Icone nome="check_circle"/> Encerrar acompanhamento do relato</button>}
+              </article>):<CartaoVazio icone="verified" titulo="Sem ocorrências relatadas" descricao="Os relatos enviados pelo portal mobile aparecerão aqui."/>}
+            </section>
+            {((dados.correcoes_checkins||[]).length+(dados.correcoes_medicamentos||[]).length)>0&&<section className="acli-bloco">
+              <div className="acli-bloco-cabecalho"><div><h2><Icone nome="history_edu"/> Histórico de correções</h2><p>Alterações registradas pelo cuidador, mantendo o motivo e o responsável.</p></div></div>
+              <details className="acli-historico-alertas"><summary>Ver {(dados.correcoes_checkins||[]).length+(dados.correcoes_medicamentos||[]).length} correção(ões)</summary>
+                {(dados.correcoes_checkins||[]).map(c=><p key={`c-${c.id}`}><b>Check-in #{c.checkin_id} · {dataBrasileira(c.criado_em,true)}</b><span> Dor: {c.dor_anterior} → {c.dor_atual}. Motivo: {c.motivo}.</span><small> Responsável: {c.responsavel}</small></p>)}
+                {(dados.correcoes_medicamentos||[]).map(c=><p key={`m-${c.id}`}><b>{c.medicamento} · {dataBrasileira(c.criado_em,true)}</b><span> {c.situacao_anterior} → {c.situacao_nova}. Motivo: {c.motivo}.</span><small> Responsável: {c.responsavel}</small></p>)}
+              </details>
+            </section>}
             <section className="acli-bloco"><div className="acli-bloco-cabecalho"><div><h2><Icone nome="calendar_month"/> Linha do tempo</h2><p>Histórico de check-ins e confirmações registradas.</p></div></div>
               {dados.checkins.length ? <div className="acli-timeline">{dados.checkins.map(c => {const medicamento = confirmacoesPorDia.get(c.data_registro);return <article key={c.id} className="acli-timeline-item"><div className="acli-timeline-data"><b>{dataBrasileira(c.data_registro)}</b><span className={`acli-badge ${Number(c.nivel_dor) >= 7 ? 'laranja' : 'verde'}`}>Dor informada: {c.nivel_dor}/10</span></div><small>{c.rotina_titulo} · {c.origem_registro}</small><div className="acli-metrica-linha"><div><Icone nome="check_circle"/><span>Exercícios</span><b>{c.itens_concluidos} de {c.itens_registrados} registrados</b></div>{medicamento && <div><Icone nome="medication"/><span>Medicamentos</span><b>{medicamento.administrados} administração(ões) confirmada(s) em {medicamento.confirmacoes} registro(s)</b></div>}</div>{c.observacoes_paciente && <p className="acli-relato"><b>Relato:</b> {c.observacoes_paciente}</p>}<span className="acli-autor">Registrado por: {c.registrado_por || 'Não informado'}</span></article>;})}</div> : <CartaoVazio icone="calendar_today" titulo="Nenhum check-in registrado" descricao="O histórico será preenchido pelos registros reais do paciente ou cuidador."/>}
               {dados.registros_medicamentos.length > 0 && <details className="acli-historico-alertas"><summary>Confirmações de medicamentos por dia</summary>{dados.registros_medicamentos.map(m => <p key={m.data}><b>{dataBrasileira(m.data)}:</b> {m.administrados} administrado(s), {m.nao_administrados} não administrado(s), {m.adiados} adiado(s). <small>{m.confirmacoes} registro(s), não necessariamente todas as doses previstas.</small></p>)}</details>}

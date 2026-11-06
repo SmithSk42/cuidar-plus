@@ -96,6 +96,41 @@ rotasAcompanhamentoClinico.get('/:pacienteId', async (req, res, next) => {
       ORDER BY (a.status = 'Pendente') DESC, a.criado_em DESC LIMIT 30
     `, [pacienteId, req.usuario.id]);
 
+    const [ocorrencias] = await banco.execute(`
+      SELECT o.id,o.tipo,o.descricao,o.intensidade_dor,o.status,o.ocorrido_em,
+             u.nome AS registrado_por
+      FROM ocorrencias o
+      JOIN pacientes p ON p.id=o.paciente_id
+      LEFT JOIN usuarios_domiciliares u ON u.id=o.usuario_domiciliar_id
+      WHERE o.paciente_id=? AND p.fisioterapeuta_id=?
+      ORDER BY o.ocorrido_em DESC,o.id DESC LIMIT 60
+    `,[pacienteId,req.usuario.id]);
+
+    const [correcoesCheckins] = await banco.execute(`
+      SELECT cc.id,cc.checkin_id,cc.motivo,cc.criado_em,u.nome AS responsavel,
+        JSON_EXTRACT(cc.dados_anteriores,'$.nivel_dor') AS dor_anterior,
+        JSON_EXTRACT(cc.dados_novos,'$.nivel_dor') AS dor_atual
+      FROM correcoes_checkins cc
+      JOIN checkins c ON c.id=cc.checkin_id
+      JOIN pacientes p ON p.id=c.paciente_id
+      JOIN usuarios_domiciliares u ON u.id=cc.usuario_domiciliar_id
+      WHERE c.paciente_id=? AND p.fisioterapeuta_id=?
+      ORDER BY cc.criado_em DESC,cc.id DESC LIMIT 70
+    `,[pacienteId,req.usuario.id]);
+
+    const [correcoesMedicamentos] = await banco.execute(`
+      SELECT cm.id,cm.motivo,cm.situacao_anterior,cm.situacao_nova,cm.criado_em,
+        m.nome AS medicamento,u.nome AS responsavel
+      FROM correcoes_medicamentos cm
+      JOIN registros_medicamentos rm ON rm.id=cm.registro_medicamento_id
+      JOIN pacientes p ON p.id=rm.paciente_id
+      JOIN medicamentos_pacientes mp ON mp.id=rm.medicamento_paciente_id
+      JOIN medicamentos m ON m.id=mp.medicamento_id
+      JOIN usuarios_domiciliares u ON u.id=cm.usuario_domiciliar_id
+      WHERE rm.paciente_id=? AND p.fisioterapeuta_id=?
+      ORDER BY cm.criado_em DESC,cm.id DESC LIMIT 70
+    `,[pacienteId,req.usuario.id]);
+
     const [metas] = await banco.execute(`
       SELECT descricao, prazo, status, DATE_FORMAT(data_prevista, '%Y-%m-%d') AS data_prevista
       FROM metas_funcionais
@@ -135,6 +170,9 @@ rotasAcompanhamentoClinico.get('/:pacienteId', async (req, res, next) => {
       checkins,
       registros_medicamentos: registrosMedicamentos,
       alertas,
+      ocorrencias,
+      correcoes_checkins: correcoesCheckins,
+      correcoes_medicamentos: correcoesMedicamentos,
       metas
     });
   } catch (erro) {
@@ -161,6 +199,35 @@ rotasAcompanhamentoClinico.patch('/:pacienteId/alertas/:alertaId', async (req, r
   } catch (erro) {
     return next(erro);
   }
+});
+
+// Encaminhamento administrativo do relato, nao diagnóstico nem atendimento emergencial.
+rotasAcompanhamentoClinico.patch('/:pacienteId/ocorrencias/:ocorrenciaId',async(req,res,next)=>{
+  const pacienteId=idPositivo(req.params.pacienteId),ocorrenciaId=idPositivo(req.params.ocorrenciaId);
+  const status=req.body?.status;
+  if(!pacienteId||!ocorrenciaId||!['Em_Analise','Encerrado'].includes(status))
+    return requisicaoInvalida(res,'Informe ocorrência e status válidos.');
+  let conn;
+  try{
+    conn=await banco.getConnection();await conn.beginTransaction();
+    const [rows]=await conn.execute(`SELECT o.id,o.status FROM ocorrencias o
+      JOIN pacientes p ON p.id=o.paciente_id AND p.fisioterapeuta_id=?
+      WHERE o.id=? AND o.paciente_id=? FOR UPDATE`,[req.usuario.id,ocorrenciaId,pacienteId]);
+    const ocorrencia=rows[0];
+    if(!ocorrencia){await conn.rollback();return res.status(404).json({erro:'Ocorrência não encontrada.'});}
+    if(ocorrencia.status==='Encerrado'||(ocorrencia.status==='Em_Analise'&&status==='Em_Analise')){
+      await conn.rollback();return res.status(409).json({erro:'Ocorrência já possui este andamento ou foi encerrada.'});
+    }
+    await conn.execute('UPDATE ocorrencias SET status=? WHERE id=?',[status,ocorrenciaId]);
+    if(status==='Encerrado'){
+      await conn.execute(`UPDATE alertas SET status='Resolvido',
+        comentario_resolucao='Relato encerrado administrativamente no painel. Não implica resolução clínica.'
+        WHERE ocorrencia_id=? AND status='Pendente'`,[ocorrenciaId]);
+    }
+    await conn.execute(`INSERT INTO auditoria_acessos(tipo_ator,ator_id,paciente_id,acao,recurso,recurso_id)
+      VALUES('Fisioterapeuta',?,? ,?,'ocorrencias',?)`,[req.usuario.id,pacienteId,`Alterou ocorrência para ${status}`,String(ocorrenciaId)]);
+    await conn.commit();res.json({mensagem:'Andamento da ocorrência atualizado. Não representa resolução clínica.'});
+  }catch(e){if(conn)await conn.rollback();next(e);}finally{conn?.release();}
 });
 
 module.exports = { rotasAcompanhamentoClinico };

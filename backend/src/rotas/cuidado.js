@@ -92,6 +92,7 @@ rotasCuidado.get('/meu-dia',exigirAcessoDomiciliar,async(req,res,next)=>{
     for(const item of itens)mapa.get(item.rotina_id)?.itens.push(item);
     const [remedios]=await banco.query(`SELECT rm.rotina_id, hm.id AS horario_id, hm.horario, mp.id AS medicamento_paciente_id,
       m.nome, m.apresentacao, mp.dose_informada,mp.via_administracao,mp.orientacao_prescrita,
+      reg.id AS registro_id, reg.usuario_domiciliar_id AS registrado_por,
       reg.situacao AS registro_situacao FROM rotinas_medicamentos rm
       JOIN medicamentos_pacientes mp ON mp.id=rm.medicamento_paciente_id AND mp.status='Ativo'
         AND mp.data_inicio<=CURDATE() AND (mp.data_fim IS NULL OR mp.data_fim>=CURDATE())
@@ -116,8 +117,10 @@ rotasCuidado.post('/checkins',exigirAcessoDomiciliar,async(req,res,next)=>{
     return requisicaoInvalida(res,'Informe rotina, nível de dor (0 a 10) e exercícios.');
   const marcados=new Map();
   for(const item of marcacoes){const id=idPositivo(item?.rotina_item_id);
-    if(!id||typeof item?.concluido!=='boolean'||marcados.has(id))return requisicaoInvalida(res,'Lista de exercícios inválida.');
-    marcados.set(id,item.concluido);
+    const situacao=['Realizado','Parcial','Nao_Realizado'].includes(item?.situacao)?item.situacao:
+      (typeof item?.concluido==='boolean'?(item.concluido?'Realizado':'Nao_Realizado'):null);
+    if(!id||!situacao||marcados.has(id))return requisicaoInvalida(res,'Lista de exercícios inválida.');
+    marcados.set(id,situacao);
   }
   let conn;
   try{
@@ -143,8 +146,9 @@ rotasCuidado.post('/checkins',exigirAcessoDomiciliar,async(req,res,next)=>{
       VALUES(?,?,?,'Aplicativo',CURDATE(),?,?)`,
       [p[0].paciente_id,rotinaId,req.usuarioDomiciliar.id,dor,observacoes.trim()||null]);
     for(const item of itens){
-      await conn.execute(`INSERT INTO checkins_itens(checkin_id,rotina_item_id,rotina_id,concluido)
-        VALUES(?,?,?,?)`,[gravado.insertId,item.id,rotinaId,marcados.get(item.id)]);
+      await conn.execute(`INSERT INTO checkins_itens(checkin_id,rotina_item_id,rotina_id,concluido,resultado,motivo_nao_realizacao)
+        VALUES(?,?,?,?,?,?)`,[gravado.insertId,item.id,rotinaId,marcados.get(item.id)==='Realizado',marcados.get(item.id),
+        marcados.get(item.id)==='Parcial'?'Parcialmente realizado':null]);
     }
     await conn.commit();res.status(201).json({id:gravado.insertId,mensagem:'Check-in registrado. Seu fisioterapeuta poderá consultá-lo.'});
   }catch(e){if(conn)await conn.rollback();if(e.code==='ER_DUP_ENTRY')return res.status(409).json({erro:'Esta rotina já foi registrada hoje.'});next(e);}

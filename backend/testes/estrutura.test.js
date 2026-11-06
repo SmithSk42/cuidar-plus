@@ -13,7 +13,7 @@ function falsoBanco(removerTabela=null,removerColuna=null){
     throw Error('Consulta inesperada');}};
 }
 test('Validação do banco aceita esquema completo',async()=>{
-  assert.deepEqual(await verificarEstrutura(falsoBanco()),{tabelas:26,views:2});
+  assert.deepEqual(await verificarEstrutura(falsoBanco()),{tabelas:28,views:2});
 });
 test('Validação do banco detecta tabela ausente antes da API iniciar',async()=>{
   await assert.rejects(()=>verificarEstrutura(falsoBanco('rotinas_medicamentos')),/rotinas_medicamentos/);
