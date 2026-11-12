@@ -2,13 +2,14 @@ import {useCallback, useEffect, useMemo, useState} from 'react';
 import {Link} from 'react-router-dom';
 import {apiRequest} from '../servicos/api.js';
 import './portal-cuidador.css';
+import Ativacao from './Ativacao.jsx';
+import LoginDomiciliar from './LoginDomiciliar.jsx';
+import { useSessaoDomiciliar } from '../contextos/useSessaoDomiciliar.js';
 
-const CHAVE='cuidar-sessao-domiciliar';
 const SIT=['Realizado','Parcial','Nao_Realizado'];
 const rotuloSituacao={Realizado:'Realizado',Parcial:'Parcialmente',Nao_Realizado:'Não realizado',Administrado:'Administrado',Nao_Administrado:'Não administrado',Adiado:'Adiado'};
 const tiposOcorrencia=[{id:'Dor',icone:'ecg_heart',texto:'Dor ou desconforto'},{id:'Queda',icone:'personal_injury',texto:'Queda'},{id:'Exercicio',icone:'exercise',texto:'Dificuldade com exercício'},{id:'Medicamento',icone:'medication',texto:'Problema com medicamento'},{id:'Outro',icone:'more_horiz',texto:'Outro problema'}];
-const lerSessao=()=>{try{const s=JSON.parse(sessionStorage.getItem(CHAVE));return s?.token&&s.usuario?.perfil==='domiciliar'?s:null;}catch{return null;}};
-const obterConvite=()=>new URLSearchParams(window.location.search).get('convite')||'';
+const obterConvite=()=>{const p=new URLSearchParams(window.location.search);return p.get('codigo')||p.get('convite')||'';};
 function Icone({nome,className=''}){return <span className={`material-symbols-outlined ${className}`} aria-hidden="true">{nome}</span>;}
 function dataCurta(valor){if(!valor)return '—';const d=/^\d{4}-\d{2}-\d{2}$/.test(String(valor))?new Date(`${valor}T12:00:00`):new Date(valor);return Number.isNaN(d.getTime())?'—':new Intl.DateTimeFormat('pt-BR',{day:'2-digit',month:'short'}).format(d);}
 function hora(valor){return valor?String(valor).slice(0,5):'—';}
@@ -18,7 +19,7 @@ function ModalMobile({titulo,filhos,fechar}){return <div className="pc-modal-fun
 function EstadoVazio({icone,titulo,descricao}){return <div className="pc-vazio"><Icone nome={icone}/><h3>{titulo}</h3><p>{descricao}</p></div>;}
 
 export default function PortalCuidador(){
-  const [sessao,setSessao]=useState(lerSessao);
+  const {sessao,estadoSessao,erroRestauracao,iniciarSessao,encerrarSessao,tentarNovamente}=useSessaoDomiciliar();
   const [convite,setConvite]=useState(obterConvite);
   const [email,setEmail]=useState(''),[senha,setSenha]=useState('');
   const [telaAcesso,setTelaAcesso]=useState(obterConvite()?'ativar':'entrar');
@@ -31,7 +32,7 @@ export default function PortalCuidador(){
   const [tipoOcorrencia,setTipoOcorrencia]=useState('Dor'),[descricaoOcorrencia,setDescricaoOcorrencia]=useState(''),[dorOcorrencia,setDorOcorrencia]=useState(null);
   const [medModal,setMedModal]=useState(null),[correcao,setCorrecao]=useState(null);
   const [motivoCorrecao,setMotivoCorrecao]=useState(''),[formCorrecao,setFormCorrecao]=useState(null);
-  const [carregando,setCarregando]=useState(false),[iniciando,setIniciando]=useState(Boolean(sessao)),[erro,setErro]=useState(''),[mensagem,setMensagem]=useState('');
+  const [carregando,setCarregando]=useState(false),[iniciando,setIniciando]=useState(Boolean(sessao?.token)),[erro,setErro]=useState(null),[mensagem,setMensagem]=useState('');
 
   useEffect(()=>{if(convite)window.history.replaceState({},document.title,'/cuidado');},[convite]);
   const carregar=useCallback(async(token)=>{
@@ -50,13 +51,13 @@ export default function PortalCuidador(){
   useEffect(()=>{
     if(!sessao?.token){setIniciando(false);return;}
     let ativo=true;
-    (async()=>{try{await carregar(sessao.token);}catch(e){if(ativo){if(e.status===401){sessionStorage.removeItem(CHAVE);setSessao(null);}setErro(e.message);}}finally{if(ativo)setIniciando(false);}})();
+    (async()=>{try{await carregar(sessao.token);}catch(e){if(ativo){if(e.status===401){encerrarSessao();}setErro({message:e.message,codigo:e.codigo});}}finally{if(ativo)setIniciando(false);}})();
     return()=>{ativo=false;};
   },[sessao?.token,carregar]);
   useEffect(()=>{setHistorico(null);setRotinaId(null);setMarcacoes({});setDor(null);setObservacoes('');},[pacienteId]);
   useEffect(()=>{
     if(!sessao?.token||!pacienteId||tela!=='historico')return;
-    carregarHistorico(sessao.token,pacienteId).catch(e=>setErro(e.message));
+    carregarHistorico(sessao.token,pacienteId).catch(e=>setErro({message:e.message,codigo:e.codigo}));
   },[sessao?.token,pacienteId,tela,carregarHistorico]);
 
   const paciente=pacientes.find(p=>Number(p.id)===Number(pacienteId));
@@ -72,16 +73,16 @@ export default function PortalCuidador(){
   const itensDaRotina=rotina?.itens||[];
   const marcacaoRotina=marcacoes[rotina?.rotina_id]||{};
 
-  async function executar(tarefa,apos){setErro('');setMensagem('');setCarregando(true);try{await tarefa();if(apos)setMensagem(apos);}catch(e){
-    if(e.status===401){sessionStorage.removeItem(CHAVE);setSessao(null);setTela('inicio');}
-    setErro(e.message);
+  async function executar(tarefa,apos){setErro(null);setMensagem('');setCarregando(true);try{await tarefa();if(apos)setMensagem(apos);}catch(e){
+    if(e.status===401 && sessao?.token){encerrarSessao();setTela('inicio');}
+    setErro({message:e.message,codigo:e.codigo});
   }finally{setCarregando(false);}}
-  function guardarSessao(d){const s={token:d.token,usuario:d.usuario};sessionStorage.setItem(CHAVE,JSON.stringify(s));setSessao(s);setSenha('');setIniciando(true);setTela('inicio');}
-  function sair(){sessionStorage.removeItem(CHAVE);setSessao(null);setPacientes([]);setPacienteId(null);setRotinas([]);setHistorico(null);setEmail('');setSenha('');setTelaAcesso('entrar');setTela('inicio');setMensagem('');setErro('');}
+  function guardarSessao(d){iniciarSessao(d);setSenha('');setIniciando(true);setTela('inicio');}
+  function sair(){encerrarSessao();setIniciando(false);setPacientes([]);setPacienteId(null);setRotinas([]);setHistorico(null);setEmail('');setSenha('');setTelaAcesso('entrar');setTela('inicio');setMensagem('');setErro(null);}
   async function entrar(e){e.preventDefault();await executar(async()=>guardarSessao(await apiRequest('/api/cuidado/login',{method:'POST',body:{email,senha}})));}
-  async function ativar(e){e.preventDefault();await executar(async()=>{const r=await apiRequest('/api/cuidado/ativar',{method:'POST',body:{convite,senha}});setConvite('');guardarSessao(r);});}
-  async function aceitar(e){e.preventDefault();await executar(async()=>{await apiRequest('/api/cuidado/aceitar-convite',{method:'POST',token:sessao.token,body:{convite}});setConvite('');await carregar(sessao.token);},'Paciente vinculado com sucesso.');}
-  function abrirTela(proxima){setErro('');setMensagem('');setTela(proxima);window.scrollTo(0,0);}
+  async function ativar(e){e.preventDefault();await executar(async()=>{const r=await apiRequest('/api/cuidado/ativar',{method:'POST',body:{codigo_convite:convite,senha}});setConvite('');guardarSessao(r);});}
+  async function aceitar(e){e.preventDefault();await executar(async()=>{await apiRequest('/api/cuidado/aceitar-convite',{method:'POST',token:sessao.token,body:{codigo_convite:convite}});setConvite('');await carregar(sessao.token);},'Paciente vinculado com sucesso.');}
+  function abrirTela(proxima){setErro(null);setMensagem('');setTela(proxima);window.scrollTo(0,0);}
   async function atualizar(){await carregar(sessao.token);}
   async function registrarMedicamento(){
     if(!medModal)return;
@@ -134,17 +135,30 @@ export default function PortalCuidador(){
   },[historico]);
   const hoje=useMemo(()=>new Intl.DateTimeFormat('pt-BR',{weekday:'long',day:'numeric',month:'long'}).format(new Date()),[]);
 
-  if(!sessao)return <div className="pc-app pc-login"><header className="pc-topo"><Link to="/cuidado" className="pc-marca"><span className="pc-marca-icone"><Icone nome="volunteer_activism"/></span><strong>Cuidar<span>+</span></strong></Link></header><main className="pc-miolo"><section className="pc-card pc-login-card"><span className="pc-eyebrow">PORTAL DE CUIDADOS</span><h1>{telaAcesso==='ativar'?'Ative seu acesso':'Que bom ter você aqui!'}</h1><p>Entre para acompanhar as atividades e registrar os cuidados do dia.</p>{erro&&<div className="pc-erro" role="alert">{erro}</div>}
-    {telaAcesso==='ativar'?<form className="pc-form" onSubmit={ativar}><label>Código do convite<input required value={convite} onChange={e=>setConvite(e.target.value.trim())} placeholder="Código recebido" autoComplete="off"/></label><label>Crie sua senha (mínimo 10 caracteres)<input required minLength={10} maxLength={128} type="password" autoComplete="new-password" value={senha} onChange={e=>setSenha(e.target.value)}/></label><button className="pc-botao-principal" disabled={carregando}>Criar meu acesso</button><button type="button" className="pc-link" onClick={()=>setTelaAcesso('entrar')}>Já tenho uma conta</button></form>
-    :<form className="pc-form" onSubmit={entrar}><label>E-mail<input type="email" autoComplete="username" required value={email} onChange={e=>setEmail(e.target.value)} placeholder="voce@email.com"/></label><label>Senha<input type="password" autoComplete="current-password" required value={senha} onChange={e=>setSenha(e.target.value)}/></label><button className="pc-botao-principal" disabled={carregando}>Entrar</button><button type="button" className="pc-link" onClick={()=>setTelaAcesso('ativar')}>Recebi um convite</button></form>}
+  if(estadoSessao==='verificando'||estadoSessao==='erro')return <div className="pc-app pc-login"><header className="pc-topo"><strong className="pc-marca">Cuidar+</strong></header><main className="pc-miolo"><section className="pc-card pc-login-card"><h1>Restaurando seu acesso</h1>{estadoSessao==='erro'?<><div role="alert" className="pc-erro">{erroRestauracao}</div><button className="pc-botao-principal" onClick={tentarNovamente}>Tentar novamente</button><button className="pc-botao-secundario" onClick={sair}>Entrar com outra conta</button></>:<p role="status">Verificando sua sessão...</p>}</section></main></div>;
+
+  if(!sessao)return <div className="pc-app pc-login"><header className="pc-topo"><Link to="/cuidado" className="pc-marca"><span className="pc-marca-icone"><Icone nome="volunteer_activism"/></span><strong>Cuidar<span>+</span></strong></Link></header><main className="pc-miolo"><section className="pc-card pc-login-card"><span className="pc-eyebrow">PORTAL DE CUIDADOS</span><h1>{telaAcesso==='ativar'?'Ative seu acesso':'Que bom ter você aqui!'}</h1><p>Entre para acompanhar as atividades e registrar os cuidados do dia.</p>{telaAcesso==='ativar'
+    ? <Ativacao codigo={convite} aoAlterarCodigo={setConvite} senha={senha} aoAlterarSenha={setSenha}
+        aoEnviar={ativar} carregando={carregando} erro={erro} aoIrParaLogin={()=>{if(erro?.codigo==='CONVITE_UTILIZADO')setConvite('');setErro(null);setTelaAcesso('entrar');}} />
+    : <LoginDomiciliar email={email} aoAlterarEmail={setEmail} senha={senha} aoAlterarSenha={setSenha}
+        aoEnviar={entrar} carregando={carregando} erro={erro} aoIrParaAtivacao={()=>{setErro(null);setTelaAcesso('ativar');}} />}
     <p className="pc-nota">O acesso é individual e autorizado pela equipe de fisioterapia.</p><Link to="/dashboard" className="pc-link">Sou fisioterapeuta</Link></section></main></div>;
 
   return <div className="pc-app"><header className="pc-topo"><button type="button" onClick={()=>abrirTela('inicio')} className="pc-marca" aria-label="Voltar ao início"><span className="pc-marca-icone"><Icone nome="volunteer_activism"/></span><strong>Cuidar<span>+</span></strong></button><div className="pc-topo-acoes"><button type="button" className="pc-relato-atalho" onClick={()=>abrirTela('ocorrencia')}><Icone nome="report"/> Relatar</button><button className="pc-icone-botao" aria-label="Sair do portal" type="button" onClick={sair}><Icone nome="logout"/></button></div></header>
     <main className="pc-miolo">
       {iniciando&&<div className="pc-estado" role="status">Carregando informações…</div>}
-      {erro&&<div className="pc-erro" role="alert"><Icone nome="error"/>{erro}</div>}
+      {erro&&<div className="pc-erro" role="alert"><Icone nome="error"/>{erro.message}</div>}
       {mensagem&&<div className="pc-sucesso" role="status"><Icone nome="check_circle"/>{mensagem}</div>}
       {!iniciando&&<>
+        {convite && <section className="pc-card pc-convite-pendente">
+          <h2>Você recebeu um novo convite</h2>
+          <p>Seu acesso já está ativo. Aceite este convite para acompanhar o paciente com a mesma conta.</p>
+          <form className="pc-form" onSubmit={aceitar}>
+            <button className="pc-botao-principal" disabled={carregando}>Aceitar convite</button>
+            <button type="button" className="pc-link" onClick={sair}>Entrar com outra conta</button>
+            <button type="button" className="pc-link" onClick={()=>setConvite('')}>Agora não</button>
+          </form>
+        </section>}
         {pacientes.length>1&&<label className="pc-seletor">Paciente acompanhado<select value={pacienteId??''} onChange={e=>{setPacienteId(Number(e.target.value));abrirTela('inicio');}}>{pacientes.map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}</select></label>}
         {!paciente?<section className="pc-card"><EstadoVazio icone="person_off" titulo="Nenhum paciente vinculado" descricao="Peça um convite à equipe para acompanhar um paciente."/><details className="pc-aceitar-convite"><summary>Tenho outro convite</summary><form onSubmit={aceitar} className="pc-form"><label>Código do convite<input value={convite} required onChange={e=>setConvite(e.target.value.trim())}/></label><button disabled={carregando} className="pc-botao-principal">Vincular paciente</button></form></details></section>:
         <>

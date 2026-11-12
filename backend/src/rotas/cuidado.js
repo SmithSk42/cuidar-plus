@@ -1,62 +1,154 @@
-const express=require('express');
-const bcrypt=require('bcryptjs');
-const jwt=require('jsonwebtoken');
-const {createHash}=require('node:crypto');
-const banco=require('../banco/conexao');
-const {exigirAcessoDomiciliar}=require('../intermediarios/acesso-domiciliar');
-const {idPositivo,emailValido,inteiroEntre,requisicaoInvalida}=require('../utilitarios/validacao');
-const rotasCuidado=express.Router();
-const tentativasLogin=new Map();
-const tokenHash=(valor)=>createHash('sha256').update(valor).digest('hex');
-const tokenDomiciliar=(id)=>jwt.sign({id,perfil:'domiciliar'},process.env.SEGREDO_JWT,{algorithm:'HS256',expiresIn:'12h'});
+const express = require('express');
+const bcrypt = require('bcryptjs'); // Implementacao bcrypt ja usada pelo projeto.
+const { createHash } = require('node:crypto');
+const banco = require('../banco/conexao');
+const { exigirAcessoDomiciliar } = require('../intermediarios/acesso-domiciliar');
+const { buscarVinculosAtivos, prepararSessaoDomiciliar } = require('../services/sessao-domiciliar');
+const { idPositivo, emailValido, inteiroEntre, requisicaoInvalida } = require('../utilitarios/validacao');
 
-rotasCuidado.post('/ativar',async(req,res,next)=>{
-  const codigo=req.body?.convite,senha=req.body?.senha;
-  if(typeof codigo!=='string'||!/^[0-9a-f]{64}$/.test(codigo)||typeof senha!=='string'||senha.length<10||senha.length>128)
-    return requisicaoInvalida(res,'Convite inválido ou senha com menos de 10 caracteres.');
-  let conn;
-  try{
-    conn=await banco.getConnection();await conn.beginTransaction();
-    const [convites]=await conn.execute(`SELECT id,paciente_id,nome_convidado,email,papel FROM convites_cuidado
-      WHERE token_hash=? AND usado_em IS NULL AND expira_em>NOW() LIMIT 1 FOR UPDATE`,[tokenHash(codigo)]);
-    const convite=convites[0];
-    if(!convite){await conn.rollback();return res.status(400).json({erro:'Convite expirado ou já utilizado.'});}
-    const [existentes]=await conn.execute('SELECT id FROM usuarios_domiciliares WHERE email=? LIMIT 1',[convite.email]);
-    if(existentes.length){await conn.rollback();return res.status(409).json({erro:'Este e-mail já possui conta. Entre e use a opção Aceitar convite.'});}
-    const hash=await bcrypt.hash(senha,12);
-    const [criado]=await conn.execute('INSERT INTO usuarios_domiciliares(nome,email,senha_hash) VALUES(?,?,?)',
-      [convite.nome_convidado,convite.email,hash]);
-    await conn.execute('INSERT INTO vinculos_cuidado(usuario_id,paciente_id,papel) VALUES(?,?,?)',
-      [criado.insertId,convite.paciente_id,convite.papel]);
-    await conn.execute('UPDATE convites_cuidado SET usado_em=NOW() WHERE id=?',[convite.id]);
-    await conn.commit();
-    res.status(201).json({token:tokenDomiciliar(criado.insertId),usuario:{id:criado.insertId,nome:convite.nome_convidado,perfil:'domiciliar'}});
-  }catch(e){if(conn)await conn.rollback();next(e);}finally{conn?.release();}
+const rotasCuidado = express.Router();
+const tentativasLogin = new Map();
+const tokenHash = (valor) => createHash('sha256').update(valor).digest('hex');
+
+function codigoValido(valor) {
+  return typeof valor === 'string' && /^[a-f0-9]{64}$/.test(valor.trim().toLowerCase());
+}
+
+function falhaConvite(resposta, status, codigo, mensagem) {
+  return resposta.status(status).json({ codigo, erro: mensagem });
+}
+
+// Montado em /api/cuidado; o caminho externo e POST /api/cuidado/ativar.
+rotasCuidado.post('/ativar', async (req, res, next) => {
+  // Mantem compatibilidade com convites antigos (?convite=) e aceita codigo_convite.
+  const codigo = req.body?.codigo_convite ?? req.body?.convite;
+  const senha = req.body?.senha;
+  if (!codigoValido(codigo) || typeof senha !== 'string' || senha.length < 10 || senha.length > 128) {
+    return requisicaoInvalida(res, 'Informe um codigo hexadecimal valido e uma senha de 10 a 128 caracteres.');
+  }
+
+  let conexao;
+  try {
+    // So calcula bcrypt apos confirmar um convite valido: evita gastar CPU em codigos aleatorios.
+    conexao = await banco.getConnection();
+    await conexao.beginTransaction();
+
+    // O FOR UPDATE impede duas ativacoes concorrentes do mesmo convite.
+    const [convites] = await conexao.execute(`
+      SELECT id, paciente_id, nome_convidado, email, papel, usado_em,
+             (expira_em <= NOW()) AS expirado
+        FROM convites_cuidado
+       WHERE token_hash = ? LIMIT 1 FOR UPDATE
+    `, [tokenHash(codigo.trim().toLowerCase())]);
+    const convite = convites[0];
+    if (!convite) {
+      await conexao.rollback();
+      return falhaConvite(res, 400, 'CONVITE_INVALIDO', 'Convite nao encontrado. Verifique o codigo recebido.');
+    }
+    if (convite.usado_em) {
+      await conexao.rollback();
+      return falhaConvite(res, 409, 'CONVITE_UTILIZADO', 'Este convite ja foi utilizado. Entre com seu e-mail e senha.');
+    }
+    if (convite.expirado) {
+      await conexao.rollback();
+      return falhaConvite(res, 410, 'CONVITE_EXPIRADO', 'O convite expirou. Solicite um novo a equipe de fisioterapia.');
+    }
+
+    const [existentes] = await conexao.execute(
+      'SELECT id FROM usuarios_domiciliares WHERE email = ? LIMIT 1', [convite.email]
+    );
+    if (existentes.length) {
+      await conexao.rollback();
+      return falhaConvite(res, 409, 'CONTA_EXISTENTE',
+        'Ja existe uma conta para este e-mail. Faca login e aceite o convite para vincular o paciente.');
+    }
+
+    const senhaHash = await bcrypt.hash(senha, 12);
+    const [criado] = await conexao.execute(
+      'INSERT INTO usuarios_domiciliares (nome, email, senha_hash) VALUES (?, ?, ?)',
+      [convite.nome_convidado, convite.email, senhaHash]
+    );
+    await conexao.execute(`
+      INSERT INTO vinculos_cuidado (usuario_id, paciente_id, papel, status)
+      VALUES (?, ?, ?, 'Ativo')
+    `, [criado.insertId, convite.paciente_id, convite.papel]);
+    await conexao.execute('UPDATE convites_cuidado SET usado_em = NOW() WHERE id = ?', [convite.id]);
+    const usuario = { id: criado.insertId, nome: convite.nome_convidado, email: convite.email };
+    const vinculos = await buscarVinculosAtivos(conexao, usuario.id);
+    await conexao.commit();
+
+    res.status(201).json(prepararSessaoDomiciliar(usuario, vinculos));
+  } catch (erro) {
+    if (conexao) await conexao.rollback().catch(() => {});
+    if (erro.code === 'ER_DUP_ENTRY') {
+      return falhaConvite(res, 409, 'CONTA_EXISTENTE',
+        'A conta ou o vinculo ja existe. Entre com seu e-mail e senha.');
+    }
+    next(erro);
+  } finally {
+    conexao?.release();
+  }
 });
 
-rotasCuidado.post('/login',async(req,res,next)=>{
-  const email=emailValido(req.body?.email),senha=req.body?.senha;
-  if(!email||typeof senha!=='string'||senha.length>128)return requisicaoInvalida(res,'Informe e-mail e senha.');
-  const chave=`${req.ip}:${email}`;const agora=Date.now();const controle=tentativasLogin.get(chave);
-  if(controle && controle.ate>agora && controle.contagem>=8)return res.status(429).json({erro:'Muitas tentativas. Tente novamente mais tarde.'});
-  try{
-    const [p]=await banco.execute('SELECT id,nome,senha_hash,ativo FROM usuarios_domiciliares WHERE email=? LIMIT 1',[email]);
-    const pessoa=p[0];
-    const correto=await bcrypt.compare(senha,pessoa?.senha_hash||'$2b$12$C6UzMDM.H6dfI/f/IKcEeOeG0C.BmT9T8xHlYfXLaZ5IrI0jOs5P6');
-    if(!pessoa?.ativo||!correto){tentativasLogin.set(chave,{ate:agora+15*60000,contagem:(controle?.ate>agora?controle.contagem:0)+1});return res.status(401).json({erro:'Credenciais inválidas.'});}
+rotasCuidado.post('/login', async (req, res, next) => {
+  const email = emailValido(req.body?.email);
+  const senha = req.body?.senha;
+  if (!email || typeof senha !== 'string' || !senha || senha.length > 128) {
+    return requisicaoInvalida(res, 'Informe e-mail e senha validos.');
+  }
+
+  const chave = `${req.ip}:${email}`;
+  const agora = Date.now();
+  const controle = tentativasLogin.get(chave);
+  if (controle && controle.ate > agora && controle.contagem >= 8) {
+    return res.status(429).json({ erro: 'Muitas tentativas. Tente novamente em 15 minutos.' });
+  }
+
+  try {
+    const [linhas] = await banco.execute(
+      'SELECT id, nome, email, senha_hash, ativo FROM usuarios_domiciliares WHERE email = ? LIMIT 1',
+      [email]
+    );
+    const usuario = linhas[0];
+    // Comparacao mesmo quando o e-mail nao existe dificulta enumeracao de contas.
+    const hashFalso = '$2b$12$C6UzMDM.H6dfI/f/IKcEeOeG0C.BmT9T8xHlYfXLaZ5IrI0jOs5P6';
+    const senhaCorreta = await bcrypt.compare(senha, usuario?.senha_hash || hashFalso);
+    if (!usuario?.ativo || !senhaCorreta) {
+      tentativasLogin.set(chave, {
+        ate: agora + 15 * 60_000,
+        contagem: (controle?.ate > agora ? controle.contagem : 0) + 1
+      });
+      return res.status(401).json({ erro: 'E-mail ou senha incorretos.' });
+    }
     tentativasLogin.delete(chave);
-    res.json({token:tokenDomiciliar(pessoa.id),usuario:{id:pessoa.id,nome:pessoa.nome,perfil:'domiciliar'}});
-  }catch(e){next(e);}
+    const vinculos = await buscarVinculosAtivos(banco, usuario.id);
+    res.json(prepararSessaoDomiciliar(usuario, vinculos));
+  } catch (erro) {
+    next(erro);
+  }
+});
+
+// Valida o JWT e busca a conta/vinculos atuais ao reabrir o navegador ou PWA.
+rotasCuidado.get('/sessao', exigirAcessoDomiciliar, async (req, res, next) => {
+  try {
+    const vinculos = await buscarVinculosAtivos(banco, req.usuarioDomiciliar.id);
+    res.json({
+      usuario: { ...req.usuarioDomiciliar, perfil: 'domiciliar' },
+      vinculos
+    });
+  } catch (erro) {
+    next(erro);
+  }
 });
 
 rotasCuidado.post('/aceitar-convite',exigirAcessoDomiciliar,async(req,res,next)=>{
-  const codigo=req.body?.convite;
-  if(typeof codigo!=='string'||!/^[0-9a-f]{64}$/.test(codigo))return requisicaoInvalida(res);
+  const codigo=req.body?.codigo_convite ?? req.body?.convite;
+  if(!codigoValido(codigo))return requisicaoInvalida(res);
   let conn;
   try{
     conn=await banco.getConnection();await conn.beginTransaction();
     const [rows]=await conn.execute(`SELECT id,paciente_id,papel,email FROM convites_cuidado
-      WHERE token_hash=? AND usado_em IS NULL AND expira_em>NOW() LIMIT 1 FOR UPDATE`,[tokenHash(codigo)]);
+      WHERE token_hash=? AND usado_em IS NULL AND expira_em>NOW() LIMIT 1 FOR UPDATE`,[tokenHash(codigo.trim().toLowerCase())]);
     const convite=rows[0];
     if(!convite||convite.email.toLowerCase()!==req.usuarioDomiciliar.email.toLowerCase()){
       await conn.rollback();return res.status(403).json({erro:'Este convite não pertence à sua conta ou expirou.'});

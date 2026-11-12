@@ -4,6 +4,7 @@ import {BrowserRouter, Navigate, Route, Routes} from 'react-router-dom';
 import PortalAutenticacao from './PortalAutenticacao.jsx';
 import PortalCuidador from './paginas/PortalCuidador.jsx';
 import Dashboard from './paginas/Dashboard.jsx';
+import { ProvedorSessaoDomiciliar } from './contextos/SessaoDomiciliar.jsx';
 import './index.css';
 
 function Aplicacao(){return <BrowserRouter><Routes>
@@ -13,8 +14,9 @@ function Aplicacao(){return <BrowserRouter><Routes>
   <Route path="/acompanhamento" element={<PortalAutenticacao/>}/>
   <Route path="/acompanhamento-clinico" element={<PortalAutenticacao/>}/>
   <Route path="/visualizacao-dashboard" element={<Dashboard visualizacao/>}/>
-  <Route path="/cuidado" element={<PortalCuidador/>}/>
-  <Route path="/paciente" element={<PortalCuidador/>}/>
+  <Route path="/cuidado" element={<ProvedorSessaoDomiciliar><PortalCuidador/></ProvedorSessaoDomiciliar>}/>
+  <Route path="/cuidado/ativar" element={<ProvedorSessaoDomiciliar><PortalCuidador/></ProvedorSessaoDomiciliar>}/>
+  <Route path="/paciente" element={<ProvedorSessaoDomiciliar><PortalCuidador/></ProvedorSessaoDomiciliar>}/>
   <Route path="*" element={<Navigate to="/dashboard" replace/>}/>
 </Routes></BrowserRouter>;}
 

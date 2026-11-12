@@ -29,6 +29,7 @@ export async function apiRequest(path, options = {}) {
   if (!response.ok) {
     const erro = new Error(data.erro || 'Não foi possível concluir a solicitação.');
     erro.status = response.status;
+    erro.codigo = data.codigo;
     throw erro;
   }
   return data;

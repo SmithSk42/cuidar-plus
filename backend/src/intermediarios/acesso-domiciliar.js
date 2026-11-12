@@ -19,4 +19,5 @@ async function exigirAcessoDomiciliar(requisicao, resposta, proximo) {
     proximo(erro);
   }
 }
-module.exports={exigirAcessoDomiciliar};
+// Alias legivel para novos controllers, mantendo compatibilidade com as rotas existentes.
+module.exports={exigirAcessoDomiciliar, verificarToken: exigirAcessoDomiciliar};
