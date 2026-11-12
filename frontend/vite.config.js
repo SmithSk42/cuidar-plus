@@ -11,9 +11,7 @@ export default defineConfig({
     port: 5173,
 
     // Permite o acesso pelo domínio público do Cloudflare
-    allowedHosts: [
-      'reef-request-trails-stood.trycloudflare.com',
-    ],
+   allowedHosts: ['.trycloudflare.com'],
 
     // Encaminha as requisições da API para o backend
     proxy: {
